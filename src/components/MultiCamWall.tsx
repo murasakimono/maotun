@@ -1,58 +1,53 @@
-import React from 'react';
-import { X, Video } from 'lucide-react';
-import { HlsPlayer } from './HlsPlayer';
+import { Grid2x2, X } from 'lucide-react';
 import type { LiveCamera } from '../types';
+import { CameraFeed } from './CameraFeed';
+import { sound } from '../sound';
 
 interface MultiCamWallProps {
-  cameras: LiveCamera[];
+  open: boolean;
   onClose: () => void;
+  cameras: LiveCamera[];
 }
 
-export const MultiCamWall: React.FC<MultiCamWallProps> = ({ cameras, onClose }) => {
-  const wallCams = cameras.slice(0, 6);
+export function MultiCamWall({ open, onClose, cameras }: MultiCamWallProps) {
+  if (!open) return null;
+  const shown = cameras.slice(0, 6);
 
   return (
-    <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex flex-col p-5">
-      <div className="flex items-center justify-between pb-4 border-b border-white/10 mb-4">
+    <div className="fixed inset-0 z-50 bg-[#08090B]/95 flex flex-col p-4">
+      <div className="flex items-center justify-between pb-3 border-b border-[#242830]">
         <div className="flex items-center gap-2.5">
-          <Video className="w-5 h-5 text-emerald-400" />
-          <div>
-            <div className="text-[10px] font-mono-tech text-emerald-400 tracking-[0.25em] uppercase">
-              MAOTUN // ÇOKLU CANLI DÜNYA DUVARI
-            </div>
-            <div className="text-sm font-bold text-white">6 ŞEHİR EŞZAMANLI CANLI GÖZLEM</div>
-          </div>
+          <Grid2x2 className="w-4 h-4 text-[#FF4D00]" />
+          <span className="font-semibold text-sm tracking-widest uppercase">
+            MAOTUN // ÇOKLU OPTİK KAMERA DUVARI ({shown.length} KANAL)
+          </span>
         </div>
         <button
-          onClick={onClose}
-          className="px-3 py-1.5 bg-white/5 border border-white/15 text-xs font-mono-tech text-slate-300 hover:text-white flex items-center gap-1.5 cursor-pointer"
+          onClick={() => {
+            sound.playClick();
+            onClose();
+          }}
+          className="inst-btn px-3 py-1.5"
         >
-          <X className="w-4 h-4" /> KÜREYE DÖN
+          <X className="w-4 h-4" /> KAPAT
         </button>
       </div>
 
-      <div className="flex-1 grid grid-cols-3 grid-rows-2 gap-3 overflow-hidden">
-        {wallCams.map((cam) => (
-          <div key={cam.id} className="relative bg-black border border-white/12 flex flex-col overflow-hidden">
-            <div className="px-3 py-1.5 bg-black/80 border-b border-white/10 flex items-center justify-between text-[10px] font-mono-tech">
-              <span className="text-emerald-300 font-bold truncate">● {cam.name}</span>
-              <span className="text-slate-400">{cam.city}</span>
+      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-3 overflow-y-auto">
+        {shown.map((cam) => (
+          <div key={cam.id} className="inst-plate reticle-corner flex flex-col overflow-hidden">
+            <div className="flex-1 min-h-[210px] bg-[#050608]">
+              <CameraFeed cam={cam} />
             </div>
-            <div className="flex-1 relative">
-              {cam.kind === 'hls' ? (
-                <HlsPlayer url={cam.embed_url} />
-              ) : (
-                <iframe
-                  src={cam.embed_url}
-                  className="w-full h-full"
-                  allow="autoplay; encrypted-media; picture-in-picture"
-                  allowFullScreen
-                />
-              )}
+            <div className="px-2.5 py-1.5 border-t border-[#242830] flex items-center justify-between bg-[#0E1013]">
+              <span className="font-mono-tech text-[10px] text-[#ECEEF2] truncate">{cam.name}</span>
+              <span className="font-mono-tech text-[9px] text-[#00E58A] shrink-0">
+                ● {cam.city.toUpperCase()}
+              </span>
             </div>
           </div>
         ))}
       </div>
     </div>
   );
-};
+}

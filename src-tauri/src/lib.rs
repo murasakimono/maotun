@@ -19,8 +19,43 @@ async fn get_flights(lat: f64, lon: f64, radius_nm: u32) -> Vec<FlightItem> {
 }
 
 #[tauri::command]
-async fn get_satellites() -> Vec<SatelliteItem> {
-    feeds::fetch_satellites().await
+async fn get_military_flights() -> Vec<FlightItem> {
+    feeds::fetch_military_flights().await
+}
+
+#[tauri::command]
+async fn get_satellite_tles() -> Vec<SatelliteTle> {
+    feeds::fetch_satellite_tles().await
+}
+
+#[tauri::command]
+async fn get_kiwisdr_nodes() -> Vec<KiwiSdrNode> {
+    feeds::fetch_kiwisdr_nodes().await
+}
+
+#[tauri::command]
+async fn get_rainviewer_meta() -> RainViewerMeta {
+    feeds::fetch_rainviewer_meta().await
+}
+
+#[tauri::command]
+async fn get_weather_aqi(lat: f64, lon: f64) -> WeatherAqi {
+    feeds::fetch_weather_aqi(lat, lon).await
+}
+
+#[tauri::command]
+async fn get_space_weather() -> SpaceWeather {
+    feeds::fetch_space_weather().await
+}
+
+#[tauri::command]
+async fn get_ships() -> Vec<ShipItem> {
+    feeds::fetch_ships().await
+}
+
+#[tauri::command]
+async fn get_firms_fires(map_key: String) -> Vec<FireHotspot> {
+    feeds::fetch_firms_fires(&map_key).await
 }
 
 #[tauri::command]
@@ -70,7 +105,14 @@ pub fn run() {
             get_earthquakes,
             get_disasters,
             get_flights,
-            get_satellites,
+            get_military_flights,
+            get_satellite_tles,
+            get_kiwisdr_nodes,
+            get_rainviewer_meta,
+            get_weather_aqi,
+            get_space_weather,
+            get_ships,
+            get_firms_fires,
             get_radios,
             get_tv_channels,
             get_news,

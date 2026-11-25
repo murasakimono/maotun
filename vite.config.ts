@@ -5,6 +5,12 @@ import tailwindcss from '@tailwindcss/vite';
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   clearScreen: false,
+  worker: {
+    format: 'es',
+  },
+  build: {
+    target: 'esnext',
+  },
   server: {
     port: 1421,
     strictPort: true,

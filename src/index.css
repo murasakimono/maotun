@@ -2,41 +2,193 @@
 @import "maplibre-gl/dist/maplibre-gl.css";
 
 @layer base {
+  :root {
+    --bg-void: #08090B;
+    --bg-chassis: #0E1013;
+    --bg-plate: #13161B;
+    --bg-well: #090A0D;
+    --line-hair: #242830;
+    --line-bright: #363C47;
+    --ink-primary: #ECEEF2;
+    --ink-muted: #7C8492;
+    --ink-dim: #4D5461;
+    --signal-orange: #FF4D00;
+    --signal-amber: #FFB800;
+    --signal-cyan: #00D4FF;
+    --signal-green: #00E58A;
+    --signal-red: #FF2A3B;
+  }
+
+  * {
+    box-sizing: border-box;
+    border-radius: 0px;
+  }
+
   body {
-    font-family: 'Space Grotesk', system-ui, sans-serif;
-    background-color: #05070a;
-    color: #e8ecf2;
-    user-select: none;
+    margin: 0;
+    font-family: "Chakra Petch", system-ui, sans-serif;
+    background: var(--bg-void);
+    color: var(--ink-primary);
+    overflow: hidden;
+  }
+
+  .font-mono-tech {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
   }
 }
 
-.font-mono-tech {
-  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+/* Swiss / Braun Instrument Surface */
+.inst-panel {
+  background: rgba(14, 16, 19, 0.92);
+  border: 1px solid var(--line-hair);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
 }
 
-/* Restraint-first frosted obsidian glass (No chunky SaaS boxes) */
-.glass-console {
-  background: rgba(7, 10, 15, 0.84);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65);
+.inst-plate {
+  background: var(--bg-plate);
+  border: 1px solid var(--line-hair);
+}
+
+.inst-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: #13161B;
+  border: 1px solid #262A33;
+  color: #B4BBC7;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition: transform 90ms cubic-bezier(0.2, 0.9, 0.3, 1), border-color 110ms ease, color 110ms ease, background-color 110ms ease;
+  cursor: pointer;
+}
+
+.inst-btn:hover {
+  border-color: #4A5261;
+  color: #ECEEF2;
+  background: #191D24;
+}
+
+.inst-btn:active {
+  transform: translateY(1px);
+}
+
+.inst-btn-active {
+  background: rgba(255, 77, 0, 0.14);
+  border-color: var(--signal-orange);
+  color: #FFFFFF;
+}
+
+.inst-btn-orange {
+  background: var(--signal-orange);
+  border: 1px solid var(--signal-orange);
+  color: #08090B;
+  font-weight: 600;
+}
+
+.inst-btn-orange:hover {
+  background: #FF621F;
+  border-color: #FF621F;
+  color: #08090B;
+}
+
+/* Corner registration marks (Swiss cartographic framing) */
+.reticle-corner {
+  position: relative;
+}
+.reticle-corner::before,
+.reticle-corner::after {
+  content: "";
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  pointer-events: none;
+}
+.reticle-corner::before {
+  top: -1px;
+  left: -1px;
+  border-top: 1px solid var(--signal-orange);
+  border-left: 1px solid var(--signal-orange);
+}
+.reticle-corner::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 1px solid var(--signal-orange);
+  border-right: 1px solid var(--signal-orange);
+}
+
+/* Subtle coordinate ruler background */
+.ruler-x {
+  background-image: repeating-linear-gradient(
+    to right,
+    rgba(255, 255, 255, 0.16) 0px,
+    rgba(255, 255, 255, 0.16) 1px,
+    transparent 1px,
+    transparent 12px
+  );
+}
+
+.led-dot {
+  width: 6px;
+  height: 6px;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+@keyframes pulse-led {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+.animate-led {
+  animation: pulse-led 1.4s steps(2, end) infinite;
+}
+
+/* Custom MapLibre Popups */
+.maplibregl-popup-content {
+  background: #0E1013 !important;
+  color: #ECEEF2 !important;
+  border: 1px solid #363C47 !important;
+  border-left: 2px solid #FF4D00 !important;
+  border-radius: 0px !important;
+  padding: 10px 12px !important;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.72) !important;
+  font-family: "IBM Plex Mono", monospace !important;
+  font-size: 11px !important;
+}
+
+.maplibregl-popup-tip {
+  border-top-color: #363C47 !important;
+  border-bottom-color: #363C47 !important;
+}
+
+.maplibregl-popup-close-button {
+  color: #7C8492 !important;
+  font-size: 16px !important;
+  padding: 2px 6px !important;
 }
 
 .maplibregl-ctrl-attrib {
-  display: none !important;
+  background: rgba(8, 9, 11, 0.75) !important;
+  color: #5C6370 !important;
+  font-family: "IBM Plex Mono", monospace !important;
+  font-size: 9px !important;
 }
 
+/* Custom Slim Technical Scrollbar */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
 }
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: #0B0C0E;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.16);
+  background: #2C313C;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(125, 211, 252, 0.6);
+  background: #FF4D00;
 }

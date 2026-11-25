@@ -3,17 +3,17 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 fn http_client() -> reqwest::Client {
     reqwest::Client::builder()
-        .timeout(Duration::from_secs(12))
-        .user_agent("MAOTUN/1.0 (Global Signal Console)")
+        .timeout(Duration::from_secs(14))
+        .user_agent("MAOTUN/2.0 (Global Signal Console)")
         .build()
         .unwrap_or_default()
 }
 
 pub async fn fetch_earthquakes() -> Vec<EarthquakeItem> {
     let client = http_client();
-    let mut results = Vec::new();
+    let mut results: Vec<EarthquakeItem> = Vec::new();
 
-    // 1. Turkey live earthquakes (Kandilli)
+    // 1. Kandilli live Turkey
     if let Ok(resp) = client
         .get("https://api.orhanaydogdu.com.tr/deprem/kandilli/live?limit=35")
         .send()
@@ -22,13 +22,12 @@ pub async fn fetch_earthquakes() -> Vec<EarthquakeItem> {
         if let Ok(json) = resp.json::<serde_json::Value>().await {
             if let Some(arr) = json["result"].as_array() {
                 for item in arr {
-                    let coords = item["geojson"]["coordinates"].as_array();
-                    if let Some(c) = coords {
+                    if let Some(c) = item["geojson"]["coordinates"].as_array() {
                         let lon = c.first().and_then(|v| v.as_f64()).unwrap_or(0.0);
                         let lat = c.get(1).and_then(|v| v.as_f64()).unwrap_or(0.0);
                         if lat != 0.0 && lon != 0.0 {
                             results.push(EarthquakeItem {
-                                id: item["earthquake_id"].as_str().unwrap_or("tr").to_string(),
+                                id: item["earthquake_id"].as_str().unwrap_or("knd").to_string(),
                                 title: item["title"].as_str().unwrap_or("Türkiye").to_string(),
                                 mag: item["mag"].as_f64().unwrap_or(0.0),
                                 depth_km: item["depth"].as_f64().unwrap_or(0.0),
@@ -44,7 +43,45 @@ pub async fn fetch_earthquakes() -> Vec<EarthquakeItem> {
         }
     }
 
-    // 2. Global live earthquakes (USGS M2.5+ past 24h)
+    // 2. AFAD live Turkey (deduplicated against Kandilli by proximity)
+    if let Ok(resp) = client
+        .get("https://api.orhanaydogdu.com.tr/deprem/afad/live?limit=25")
+        .send()
+        .await
+    {
+        if let Ok(json) = resp.json::<serde_json::Value>().await {
+            if let Some(arr) = json["result"].as_array() {
+                for item in arr {
+                    if let Some(c) = item["geojson"]["coordinates"].as_array() {
+                        let lon = c.first().and_then(|v| v.as_f64()).unwrap_or(0.0);
+                        let lat = c.get(1).and_then(|v| v.as_f64()).unwrap_or(0.0);
+                        let mag = item["mag"].as_f64().unwrap_or(0.0);
+                        if lat != 0.0 && lon != 0.0 {
+                            let is_dup = results.iter().any(|e| {
+                                (e.lat - lat).abs() < 0.15
+                                    && (e.lon - lon).abs() < 0.15
+                                    && (e.mag - mag).abs() < 0.5
+                            });
+                            if !is_dup {
+                                results.push(EarthquakeItem {
+                                    id: item["earthquake_id"].as_str().unwrap_or("afad").to_string(),
+                                    title: item["title"].as_str().unwrap_or("Türkiye").to_string(),
+                                    mag,
+                                    depth_km: item["depth"].as_f64().unwrap_or(0.0),
+                                    lat,
+                                    lon,
+                                    time_str: item["date"].as_str().unwrap_or("").to_string(),
+                                    source: "AFAD".to_string(),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Global USGS M2.5+ past 24h
     if let Ok(resp) = client
         .get("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.geojson")
         .send()
@@ -52,10 +89,9 @@ pub async fn fetch_earthquakes() -> Vec<EarthquakeItem> {
     {
         if let Ok(json) = resp.json::<serde_json::Value>().await {
             if let Some(arr) = json["features"].as_array() {
-                for item in arr.iter().take(65) {
+                for item in arr.iter().take(70) {
                     let props = &item["properties"];
-                    let coords = item["geometry"]["coordinates"].as_array();
-                    if let Some(c) = coords {
+                    if let Some(c) = item["geometry"]["coordinates"].as_array() {
                         let lon = c.first().and_then(|v| v.as_f64()).unwrap_or(0.0);
                         let lat = c.get(1).and_then(|v| v.as_f64()).unwrap_or(0.0);
                         let depth = c.get(2).and_then(|v| v.as_f64()).unwrap_or(0.0);
@@ -82,7 +118,7 @@ pub async fn fetch_disasters() -> Vec<DisasterItem> {
     let client = http_client();
     let mut results = Vec::new();
     if let Ok(resp) = client
-        .get("https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit=40")
+        .get("https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit=45")
         .send()
         .await
     {
@@ -119,88 +155,345 @@ pub async fn fetch_disasters() -> Vec<DisasterItem> {
     results
 }
 
-pub async fn fetch_flights(lat: f64, lon: f64, radius_nm: u32) -> Vec<FlightItem> {
-    let client = http_client();
-    let url = format!("https://api.adsb.lol/v2/lat/{:.4}/lon/{:.4}/dist/{}", lat, lon, radius_nm.min(250));
+fn parse_adsb_list(json: &serde_json::Value, force_cat: Option<&str>, limit: usize) -> Vec<FlightItem> {
     let mut results = Vec::new();
-    if let Ok(resp) = client.get(&url).send().await {
-        if let Ok(json) = resp.json::<serde_json::Value>().await {
-            if let Some(ac_list) = json["ac"].as_array() {
-                for ac in ac_list.iter().take(70) {
-                    if let (Some(alat), Some(alon)) = (ac["lat"].as_f64(), ac["lon"].as_f64()) {
-                        results.push(FlightItem {
-                            hex: ac["hex"].as_str().unwrap_or("").to_string(),
-                            callsign: ac["flight"].as_str().unwrap_or("N/A").trim().to_string(),
-                            lat: alat,
-                            lon: alon,
-                            alt_ft: ac["alt_baro"].as_i64().unwrap_or(0),
-                            speed_kt: ac["gs"].as_f64().unwrap_or(0.0),
-                            heading: ac["track"].as_f64().unwrap_or(0.0),
-                            aircraft_type: ac["t"].as_str().unwrap_or("AIRCRAFT").to_string(),
-                        });
-                    }
-                }
+    if let Some(ac_list) = json["ac"].as_array() {
+        for ac in ac_list.iter().take(limit) {
+            if let (Some(alat), Some(alon)) = (ac["lat"].as_f64(), ac["lon"].as_f64()) {
+                let db_flags = ac["dbFlags"].as_i64().unwrap_or(0);
+                let category = if let Some(fc) = force_cat {
+                    fc.to_string()
+                } else if (db_flags & 1) != 0 {
+                    "MIL".to_string()
+                } else if (db_flags & 8) != 0 {
+                    "LADD".to_string()
+                } else if (db_flags & 4) != 0 {
+                    "PIA".to_string()
+                } else {
+                    "CIVIL".to_string()
+                };
+                results.push(FlightItem {
+                    hex: ac["hex"].as_str().unwrap_or("").to_string(),
+                    callsign: ac["flight"].as_str().unwrap_or("N/A").trim().to_string(),
+                    lat: alat,
+                    lon: alon,
+                    alt_ft: ac["alt_baro"].as_i64().unwrap_or(0),
+                    speed_kt: ac["gs"].as_f64().unwrap_or(0.0),
+                    heading: ac["track"].as_f64().unwrap_or(0.0),
+                    aircraft_type: ac["t"].as_str().unwrap_or("AIRCRAFT").to_string(),
+                    category,
+                    squawk: ac["squawk"].as_str().unwrap_or("----").to_string(),
+                });
             }
         }
     }
     results
 }
 
-pub async fn fetch_satellites() -> Vec<SatelliteItem> {
+pub async fn fetch_flights(lat: f64, lon: f64, radius_nm: u32) -> Vec<FlightItem> {
     let client = http_client();
-    let mut sats = Vec::new();
+    let url = format!("https://api.adsb.lol/v2/lat/{:.4}/lon/{:.4}/dist/{}", lat, lon, radius_nm.min(250));
+    if let Ok(resp) = client.get(&url).send().await {
+        if let Ok(json) = resp.json::<serde_json::Value>().await {
+            return parse_adsb_list(&json, None, 80);
+        }
+    }
+    Vec::new()
+}
 
-    // Real-time ISS telemetry
+pub async fn fetch_military_flights() -> Vec<FlightItem> {
+    let client = http_client();
+    if let Ok(resp) = client.get("https://api.adsb.lol/v2/mil").send().await {
+        if let Ok(json) = resp.json::<serde_json::Value>().await {
+            return parse_adsb_list(&json, Some("MIL"), 120);
+        }
+    }
+    Vec::new()
+}
+
+pub async fn fetch_satellite_tles() -> Vec<SatelliteTle> {
+    let client = http_client();
+    let mut out = Vec::new();
+    let groups = [
+        ("stations", "STATION", 12usize),
+        ("weather", "WEATHER", 14usize),
+        ("gps-ops", "GPS", 14usize),
+        ("starlink", "STARLINK", 24usize),
+    ];
+
+    for (slug, label, max_n) in groups {
+        let url = format!("https://celestrak.org/NORAD/elements/gp.php?GROUP={}&FORMAT=tle", slug);
+        if let Ok(resp) = client.get(&url).send().await {
+            if let Ok(text) = resp.text().await {
+                let lines: Vec<&str> = text.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+                let mut count = 0usize;
+                let mut i = 0usize;
+                while i + 2 < lines.len() && count < max_n {
+                    let name = lines[i];
+                    let tle1 = lines[i + 1];
+                    let tle2 = lines[i + 2];
+                    if tle1.starts_with("1 ") && tle2.starts_with("2 ") {
+                        let norad = tle1.get(2..7).unwrap_or("00000").trim().to_string();
+                        out.push(SatelliteTle {
+                            id: norad,
+                            name: name.to_string(),
+                            group: label.to_string(),
+                            tle1: tle1.to_string(),
+                            tle2: tle2.to_string(),
+                        });
+                        count += 1;
+                        i += 3;
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+pub async fn fetch_kiwisdr_nodes() -> Vec<KiwiSdrNode> {
+    let client = http_client();
+    let mut out = Vec::new();
+    if let Ok(resp) = client.get("http://rx.linkfanel.net/kiwisdr_com.js").send().await {
+        if let Ok(text) = resp.text().await {
+            if let (Some(start), Some(end)) = (text.find('['), text.rfind(']')) {
+                let raw = &text[start..=end];
+                if let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(raw) {
+                    for item in arr.iter().take(160) {
+                        let gps = item["gps"].as_str().unwrap_or("");
+                        let cleaned = gps.trim_matches(|c| c == '(' || c == ')' || c == ' ');
+                        let mut parts = cleaned.split(',');
+                        let lat = parts.next().and_then(|s| s.trim().parse::<f64>().ok()).unwrap_or(0.0);
+                        let lon = parts.next().and_then(|s| s.trim().parse::<f64>().ok()).unwrap_or(0.0);
+                        let url = item["url"].as_str().unwrap_or("").to_string();
+                        if lat != 0.0 && lon != 0.0 && !url.is_empty() {
+                            out.push(KiwiSdrNode {
+                                name: item["name"].as_str().unwrap_or("KiwiSDR").chars().take(48).collect(),
+                                url,
+                                lat,
+                                lon,
+                                users: item["users"].as_str().and_then(|s| s.parse().ok()).unwrap_or(0),
+                                users_max: item["users_max"].as_str().and_then(|s| s.parse().ok()).unwrap_or(4),
+                                bands: item["bands"].as_str().unwrap_or("0-30 MHz").to_string(),
+                                antenna: item["antenna"].as_str().unwrap_or("HF Antenna").chars().take(42).collect(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+pub async fn fetch_rainviewer_meta() -> RainViewerMeta {
+    let client = http_client();
+    let mut frames = Vec::new();
+    let mut host = "https://tilecache.rainviewer.com".to_string();
     if let Ok(resp) = client
-        .get("https://api.wheretheiss.at/v1/satellites/25544")
+        .get("https://api.rainviewer.com/public/weather-maps.json")
         .send()
         .await
     {
+        if let Ok(json) = resp.json::<serde_json::Value>().await {
+            if let Some(h) = json["host"].as_str() {
+                host = h.to_string();
+            }
+            if let Some(past) = json["radar"]["past"].as_array() {
+                for f in past {
+                    if let (Some(t), Some(p)) = (f["time"].as_i64(), f["path"].as_str()) {
+                        frames.push(RainViewerFrame { time: t, path: p.to_string() });
+                    }
+                }
+            }
+            if let Some(nowc) = json["radar"]["nowcast"].as_array() {
+                for f in nowc {
+                    if let (Some(t), Some(p)) = (f["time"].as_i64(), f["path"].as_str()) {
+                        frames.push(RainViewerFrame { time: t, path: p.to_string() });
+                    }
+                }
+            }
+        }
+    }
+    RainViewerMeta { host, frames }
+}
+
+pub async fn fetch_weather_aqi(lat: f64, lon: f64) -> WeatherAqi {
+    let client = http_client();
+    let mut res = WeatherAqi {
+        temp_c: 0.0,
+        wind_kmh: 0.0,
+        wind_dir: 0.0,
+        humidity: 0.0,
+        pm25: 0.0,
+        pm10: 0.0,
+        co: 0.0,
+        us_aqi: 0,
+    };
+
+    let w_url = format!(
+        "https://api.open-meteo.com/v1/forecast?latitude={:.4}&longitude={:.4}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m",
+        lat, lon
+    );
+    if let Ok(resp) = client.get(&w_url).send().await {
         if let Ok(j) = resp.json::<serde_json::Value>().await {
-            if let (Some(lat), Some(lon)) = (j["latitude"].as_f64(), j["longitude"].as_f64()) {
-                sats.push(SatelliteItem {
-                    id: "25544".to_string(),
-                    name: "ISS (Uluslararası Uzay İstasyonu)".to_string(),
-                    category: "İstasyon".to_string(),
-                    lat,
-                    lon,
-                    alt_km: j["altitude"].as_f64().unwrap_or(420.0),
-                    velocity_kmh: j["velocity"].as_f64().unwrap_or(27600.0),
-                });
+            let cur = &j["current"];
+            res.temp_c = cur["temperature_2m"].as_f64().unwrap_or(0.0);
+            res.humidity = cur["relative_humidity_2m"].as_f64().unwrap_or(0.0);
+            res.wind_kmh = cur["wind_speed_10m"].as_f64().unwrap_or(0.0);
+            res.wind_dir = cur["wind_direction_10m"].as_f64().unwrap_or(0.0);
+        }
+    }
+
+    let aq_url = format!(
+        "https://air-quality-api.open-meteo.com/v1/air-quality?latitude={:.4}&longitude={:.4}&current=pm10,pm2_5,carbon_monoxide,us_aqi",
+        lat, lon
+    );
+    if let Ok(resp) = client.get(&aq_url).send().await {
+        if let Ok(j) = resp.json::<serde_json::Value>().await {
+            let cur = &j["current"];
+            res.pm25 = cur["pm2_5"].as_f64().unwrap_or(0.0);
+            res.pm10 = cur["pm10"].as_f64().unwrap_or(0.0);
+            res.co = cur["carbon_monoxide"].as_f64().unwrap_or(0.0);
+            res.us_aqi = cur["us_aqi"].as_i64().unwrap_or(0);
+        }
+    }
+    res
+}
+
+pub async fn fetch_space_weather() -> SpaceWeather {
+    let client = http_client();
+    let mut kp_index = 2.0;
+    let mut kp_time = String::new();
+    let mut aurora_points = Vec::new();
+
+    if let Ok(resp) = client
+        .get("https://services.swpc.noaa.gov/json/planetary_k_index_1m.json")
+        .send()
+        .await
+    {
+        if let Ok(arr) = resp.json::<Vec<serde_json::Value>>().await {
+            if let Some(last) = arr.last() {
+                kp_index = last["kp_index"].as_f64().unwrap_or(2.0);
+                kp_time = last["time_tag"].as_str().unwrap_or("").to_string();
             }
         }
     }
 
-    // Live orbital propagation approximations for key tracked satellites (deterministic from epoch)
-    let now_sec = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs_f64();
-
-    let extra = [
-        ("48274", "CSS Tiangong (Çin İstasyonu)", "İstasyon", 41.5, 390.0, 27650.0, 92.0, 0.8),
-        ("20580", "Hubble Uzay Teleskobu", "Gözlem", 28.5, 535.0, 27300.0, 95.4, 2.1),
-        ("43013", "NOAA-20 Hava Uydusu", "Meteoroloji", 78.0, 824.0, 26800.0, 101.4, 3.7),
-        ("40697", "Sentinel-2A Yer Gözlem", "Gözlem", 76.0, 786.0, 26900.0, 100.6, 5.1),
-        ("SL-TR", "Starlink-31042 (Alçak Yörünge)", "İletişim", 53.2, 550.0, 27200.0, 95.6, 1.4),
-    ];
-
-    for (id, name, cat, incl, alt, vel, period_min, phase) in extra {
-        let angle = (now_sec / (period_min * 60.0)) * std::f64::consts::TAU + phase;
-        let lat = (angle.sin() * incl).clamp(-82.0, 82.0);
-        let lon = ((((angle * 57.2958) - (now_sec * 0.004178)) % 360.0) + 540.0) % 360.0 - 180.0;
-        sats.push(SatelliteItem {
-            id: id.to_string(),
-            name: name.to_string(),
-            category: cat.to_string(),
-            lat,
-            lon,
-            alt_km: alt,
-            velocity_kmh: vel,
-        });
+    if let Ok(resp) = client
+        .get("https://services.swpc.noaa.gov/json/ovation_aurora_latest.json")
+        .send()
+        .await
+    {
+        if let Ok(j) = resp.json::<serde_json::Value>().await {
+            if let Some(coords) = j["coordinates"].as_array() {
+                // Sample every 2nd strong point (>= 14% probability) for smooth 60 FPS heatmap
+                for (idx, pt) in coords.iter().enumerate() {
+                    if idx % 2 != 0 {
+                        continue;
+                    }
+                    if let Some(a) = pt.as_array() {
+                        let lon_raw = a.first().and_then(|v| v.as_f64()).unwrap_or(0.0);
+                        let lat = a.get(1).and_then(|v| v.as_f64()).unwrap_or(0.0);
+                        let prob = a.get(2).and_then(|v| v.as_i64()).unwrap_or(0);
+                        if prob >= 14 {
+                            let lon = if lon_raw > 180.0 { lon_raw - 360.0 } else { lon_raw };
+                            aurora_points.push(AuroraPoint { lon, lat, prob });
+                            if aurora_points.len() >= 1400 {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    sats
+    let storm_level = if kp_index >= 7.0 {
+        "G3+ GÜÇLÜ FIRTINA"
+    } else if kp_index >= 5.0 {
+        "G1-G2 JEOMANYETİK FIRTINA"
+    } else if kp_index >= 4.0 {
+        "AKTİF"
+    } else {
+        "SAKİN"
+    }
+    .to_string();
+
+    SpaceWeather {
+        kp_index,
+        kp_time,
+        storm_level,
+        aurora_points,
+    }
+}
+
+pub async fn fetch_ships() -> Vec<ShipItem> {
+    let client = http_client();
+    let mut ships = Vec::new();
+    // Keyless open AIS feed (Digitraffic Marine - Baltic/Northern Europe)
+    if let Ok(resp) = client
+        .get("https://meri.digitraffic.fi/api/ais/v1/locations")
+        .header("Digitraffic-User", "MAOTUN/2.0")
+        .send()
+        .await
+    {
+        if let Ok(j) = resp.json::<serde_json::Value>().await {
+            if let Some(feats) = j["features"].as_array() {
+                for f in feats.iter().take(120) {
+                    if let Some(c) = f["geometry"]["coordinates"].as_array() {
+                        let lon = c.first().and_then(|v| v.as_f64()).unwrap_or(0.0);
+                        let lat = c.get(1).and_then(|v| v.as_f64()).unwrap_or(0.0);
+                        let p = &f["properties"];
+                        let mmsi = f["mmsi"].to_string();
+                        ships.push(ShipItem {
+                            mmsi: mmsi.clone(),
+                            name: format!("VESSEL {}", mmsi),
+                            lat,
+                            lon,
+                            sog: p["sog"].as_f64().unwrap_or(0.0),
+                            cog: p["cog"].as_f64().unwrap_or(0.0),
+                            source: "DIGITRAFFIC".to_string(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+    ships
+}
+
+pub async fn fetch_firms_fires(map_key: &str) -> Vec<FireHotspot> {
+    if map_key.trim().is_empty() {
+        return Vec::new();
+    }
+    let client = http_client();
+    let url = format!(
+        "https://firms.modaps.eosdis.nasa.gov/api/area/csv/{}/VIIRS_SNPP_NRT/world/1",
+        map_key.trim()
+    );
+    let mut out = Vec::new();
+    if let Ok(resp) = client.get(&url).send().await {
+        if let Ok(text) = resp.text().await {
+            for line in text.lines().skip(1).take(300) {
+                let cols: Vec<&str> = line.split(',').collect();
+                if cols.len() >= 13 {
+                    if let (Ok(lat), Ok(lon)) = (cols[0].parse::<f64>(), cols[1].parse::<f64>()) {
+                        out.push(FireHotspot {
+                            lat,
+                            lon,
+                            brightness: cols[2].parse::<f64>().unwrap_or(300.0),
+                            acq_date: cols[5].to_string(),
+                            frp: cols[12].parse::<f64>().unwrap_or(0.0),
+                        });
+                    }
+                }
+            }
+        }
+    }
+    out
 }
 
 pub async fn fetch_radios(country_code: &str, city: &str) -> Vec<RadioStation> {
@@ -344,6 +637,24 @@ pub async fn fetch_outages(country_code: &str) -> Vec<OutageItem> {
             }
         }
     }
+    // Also query RIPE Stat country routing stats for live ASN/IPv4 visibility
+    let ripe_url = format!("https://stat.ripe.net/data/country-routing-stats/data.json?resource={}", cc);
+    if let Ok(resp) = client.get(&ripe_url).send().await {
+        if let Ok(json) = resp.json::<serde_json::Value>().await {
+            if let Some(stats) = json["data"]["stats"].as_array().and_then(|a| a.last()) {
+                let asns = stats["asns_ris"].as_i64().unwrap_or(0);
+                let prefixes = stats["v4_prefixes_ris"].as_i64().unwrap_or(0);
+                if asns > 0 {
+                    out.push(OutageItem {
+                        entity: format!("RIPE RIS // {} ({} ASN)", cc, asns),
+                        datasource: format!("{} IPv4 BGP Öneki", prefixes),
+                        level: "normal".to_string(),
+                        time_str: "CANLI".to_string(),
+                    });
+                }
+            }
+        }
+    }
     out
 }
 
@@ -425,7 +736,7 @@ pub async fn ai_region_brief(region: String, summary_context: String, endpoint: 
         "messages": [
             {
                 "role": "system",
-                "content": "Sen MAOTUN küresel istihbarat konsolunun analistisin. Sana verilen canlı deprem, uçuş, kesinti ve haber verilerinden 3-4 cümlelik net, sakin ve bilgi yoğun Türkçe bir durum brifingi yaz."
+                "content": "Sen MAOTUN küresel istihbarat konsolunun analistisin. Sana verilen canlı deprem, uçuş, hava kalitesi, kesinti ve haber verilerinden 3-4 cümlelik net, sakin ve bilgi yoğun Türkçe bir durum brifingi yaz."
             },
             {
                 "role": "user",

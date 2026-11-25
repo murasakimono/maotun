@@ -2,50 +2,63 @@ import React, { useEffect, useRef, useState } from 'react';
 import Hls from 'hls.js';
 
 interface HlsPlayerProps {
-  url: string;
+  src: string;
   title?: string;
+  className?: string;
+  muted?: boolean;
 }
 
-export const HlsPlayer: React.FC<HlsPlayerProps> = ({ url, title }) => {
+export const HlsPlayer: React.FC<HlsPlayerProps> = ({
+  src,
+  title,
+  className = 'w-full h-full',
+  muted = false,
+}) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     const video = videoRef.current;
-    if (!video || !url) return;
+    if (!video || !src) return;
     setErr(null);
 
     let hls: Hls | null = null;
     if (Hls.isSupported()) {
       hls = new Hls({ enableWorker: true, lowLatencyMode: true });
-      hls.loadSource(url);
+      hls.loadSource(src);
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         video.play().catch(() => {});
       });
       hls.on(Hls.Events.ERROR, (_e, data) => {
-        if (data.fatal) setErr('Akış şu an çevrimdışı veya bölge kısıtlı.');
+        if (data.fatal) setErr('AKIŞ ÇEVRİMDIŞI VEYA BÖLGE KISITLI');
       });
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = url;
+      video.src = src;
       video.play().catch(() => {});
     }
 
     return () => {
       if (hls) hls.destroy();
     };
-  }, [url]);
+  }, [src]);
 
   return (
-    <div className="relative w-full aspect-video bg-black border border-white/10 overflow-hidden">
-      <video ref={videoRef} controls playsInline className="w-full h-full object-contain" />
+    <div className={`relative bg-[#08090B] overflow-hidden ${className}`}>
+      <video
+        ref={videoRef}
+        controls
+        playsInline
+        muted={muted}
+        className="w-full h-full object-contain"
+      />
       {title && (
-        <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/75 text-[10px] font-mono-tech text-emerald-300 pointer-events-none">
-          ● CANLI • {title}
+        <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 bg-[#08090B]/85 border border-[#242830] text-[9px] font-mono-tech text-[#00E58A] pointer-events-none">
+          ● {title}
         </div>
       )}
       {err && (
-        <div className="absolute inset-0 bg-black/85 flex items-center justify-center p-4 text-center text-xs font-mono-tech text-amber-300">
+        <div className="absolute inset-0 bg-[#08090B]/90 flex items-center justify-center p-4 text-center text-[11px] font-mono-tech text-[#FFB800]">
           {err}
         </div>
       )}
