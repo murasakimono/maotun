@@ -612,7 +612,7 @@ export function App() {
         {/* Left: Brand & Live Minimal Telemetry */}
         <div className="atlas-pill rounded-2xl px-3.5 py-2 flex items-center gap-3 pointer-events-auto">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#E5A952]" />
+            <img src="/maotun-logo.svg" alt="MAOTUN" className="w-5 h-5 rounded-md shrink-0" />
             <span className="font-semibold text-sm tracking-[0.14em] text-white">MAOTUN</span>
           </div>
           <span className="h-3.5 w-px bg-white/10 hidden md:block" />

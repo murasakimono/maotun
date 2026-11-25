@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <!-- Obsidian Squircle Surface -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#191D26"/>
+      <stop offset="48%" stop-color="#0D1016"/>
+      <stop offset="100%" stop-color="#05070A"/>
+    </linearGradient>
+
+    <!-- Subtle Top-Left Studio Rim Light -->
+    <linearGradient id="rimGrad" x1="15%" y1="0%" x2="85%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.28"/>
+      <stop offset="30%" stop-color="#E5A952" stop-opacity="0.22"/>
+      <stop offset="70%" stop-color="#FFFFFF" stop-opacity="0.04"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.5"/>
+    </linearGradient>
+
+    <!-- Ambient Warm Amber Glow behind Globe -->
+    <radialGradient id="ambientGlow" cx="54%" cy="44%" r="44%">
+      <stop offset="0%" stop-color="#E5A952" stop-opacity="0.24"/>
+      <stop offset="55%" stop-color="#E5A952" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#E5A952" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Smoked-Glass 3D Obsidian Sphere -->
+    <radialGradient id="sphereGrad" cx="38%" cy="32%" r="65%">
+      <stop offset="0%" stop-color="#2A3140"/>
+      <stop offset="38%" stop-color="#141821"/>
+      <stop offset="82%" stop-color="#0A0C11"/>
+      <stop offset="100%" stop-color="#040507"/>
+    </radialGradient>
+
+    <!-- Brushed Warm Amber-Gold Metallic Gradient -->
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFE0A3"/>
+      <stop offset="35%" stop-color="#E5A952"/>
+      <stop offset="70%" stop-color="#C6842B"/>
+      <stop offset="100%" stop-color="#F7C97E"/>
+    </linearGradient>
+
+    <!-- Brushed Titanium Silver Gradient -->
+    <linearGradient id="silverGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E6EAF2" stop-opacity="0.72"/>
+      <stop offset="50%" stop-color="#8A94A6" stop-opacity="0.32"/>
+      <stop offset="100%" stop-color="#CBD5E1" stop-opacity="0.14"/>
+    </linearGradient>
+
+    <!-- Glowing Signal Beacon -->
+    <radialGradient id="beaconGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#FFF5D6" stop-opacity="1"/>
+      <stop offset="30%" stop-color="#F6B856" stop-opacity="0.85"/>
+      <stop offset="65%" stop-color="#E5A952" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#E5A952" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Soft Shadow Filter -->
+    <filter id="dropShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="22" stdDeviation="28" flood-color="#000000" flood-opacity="0.75"/>
+    </filter>
+    <filter id="amberGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <clipPath id="globeClip">
+      <circle cx="512" cy="512" r="248"/>
+    </clipPath>
+  </defs>
+
+  <!-- Squircle Base -->
+  <rect x="44" y="44" width="936" height="936" rx="220" ry="220" fill="url(#bgGrad)"/>
+  <!-- Precision Rim Border -->
+  <rect x="48" y="48" width="928" height="928" rx="216" ry="216" fill="none" stroke="url(#rimGrad)" stroke-width="6"/>
+
+  <!-- Subtle Outer Astrolabe Calibration Ring -->
+  <circle cx="512" cy="512" r="374" fill="none" stroke="#FFFFFF" stroke-opacity="0.06" stroke-width="2"/>
+  <circle cx="512" cy="512" r="356" fill="none" stroke="#E5A952" stroke-opacity="0.13" stroke-width="1.5" stroke-dasharray="4 14"/>
+
+  <!-- Cardinal Precision Micro-Ticks (N, E, S, W) -->
+  <g stroke="#E5A952" stroke-opacity="0.55" stroke-width="4" stroke-linecap="round">
+    <line x1="512" y1="118" x2="512" y2="146"/>
+    <line x1="512" y1="878" x2="512" y2="906"/>
+    <line x1="118" y1="512" x2="146" y2="512"/>
+    <line x1="878" y1="512" x2="906" y2="512"/>
+  </g>
+
+  <!-- Ambient Glow -->
+  <circle cx="512" cy="512" r="360" fill="url(#ambientGlow)"/>
+
+  <!-- Back Half of Tilted Orbital Trajectory Ring -->
+  <g transform="rotate(-28 512 512)">
+    <path d="M 156 512 A 356 128 0 0 1 868 512" fill="none" stroke="url(#goldGrad)" stroke-width="14" stroke-opacity="0.32" stroke-linecap="round"/>
+  </g>
+
+  <!-- Smoked-Glass 3D Globe Sphere -->
+  <circle cx="512" cy="512" r="248" fill="url(#sphereGrad)" filter="url(#dropShadow)"/>
+
+  <!-- Precision Latitude & Longitude Meridian Grid clipped inside Sphere -->
+  <g clip-path="url(#globeClip)" fill="none">
+    <!-- Longitudes -->
+    <ellipse cx="512" cy="512" rx="92" ry="248" stroke="url(#silverGrad)" stroke-width="3.2"/>
+    <ellipse cx="512" cy="512" rx="184" ry="248" stroke="url(#silverGrad)" stroke-width="2.6"/>
+    <line x1="512" y1="264" x2="512" y2="760" stroke="url(#silverGrad)" stroke-width="2.6"/>
+    <!-- Latitudes -->
+    <ellipse cx="512" cy="512" rx="248" ry="64" stroke="url(#silverGrad)" stroke-width="3.2"/>
+    <ellipse cx="512" cy="408" rx="226" ry="44" stroke="url(#silverGrad)" stroke-width="2.2" stroke-opacity="0.65"/>
+    <ellipse cx="512" cy="616" rx="226" ry="44" stroke="url(#silverGrad)" stroke-width="2.2" stroke-opacity="0.65"/>
+    <!-- Subtle Specular Glass Highlight -->
+    <ellipse cx="428" cy="396" rx="115" ry="72" transform="rotate(-24 428 396)" fill="#FFFFFF" fill-opacity="0.045"/>
+  </g>
+
+  <!-- Crisp Sphere Outer Bezel -->
+  <circle cx="512" cy="512" r="248" fill="none" stroke="url(#silverGrad)" stroke-width="4.5"/>
+
+  <!-- Secondary Fine Silver Cross-Orbit -->
+  <g transform="rotate(34 512 512)">
+    <ellipse cx="512" cy="512" rx="330" ry="96" fill="none" stroke="#CBD5E1" stroke-opacity="0.22" stroke-width="3"/>
+  </g>
+
+  <!-- Front Half of Tilted Brushed Amber-Gold Orbital Ring (Sweeps IN FRONT of Globe!) -->
+  <g transform="rotate(-28 512 512)" filter="url(#amberGlow)">
+    <path d="M 868 512 A 356 128 0 0 1 156 512" fill="none" stroke="url(#goldGrad)" stroke-width="18" stroke-linecap="round"/>
+    <!-- Glowing Orbital Signal Satellite / Beacon Dot EXACTLY on the orbit curve -->
+    <circle cx="810" cy="442" r="52" fill="url(#beaconGlow)"/>
+    <circle cx="810" cy="442" r="19" fill="#FFF3D1" stroke="#E5A952" stroke-width="5"/>
+  </g>
+
+  <!-- Subtle Inner Target Node (Istanbul / Meridian Focus) -->
+  <circle cx="578" cy="456" r="24" fill="#E5A952" fill-opacity="0.22"/>
+  <circle cx="578" cy="456" r="8.5" fill="#FFE6B3"/>
+</svg>
