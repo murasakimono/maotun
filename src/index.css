@@ -1,0 +1,42 @@
+@import "tailwindcss";
+@import "maplibre-gl/dist/maplibre-gl.css";
+
+@layer base {
+  body {
+    font-family: 'Space Grotesk', system-ui, sans-serif;
+    background-color: #05070a;
+    color: #e8ecf2;
+    user-select: none;
+  }
+}
+
+.font-mono-tech {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+/* Restraint-first frosted obsidian glass (No chunky SaaS boxes) */
+.glass-console {
+  background: rgba(7, 10, 15, 0.84);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65);
+}
+
+.maplibregl-ctrl-attrib {
+  display: none !important;
+}
+
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(125, 211, 252, 0.6);
+}
