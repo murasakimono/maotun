@@ -179,6 +179,38 @@ export function RegionDrawer({
       .slice(0, 12);
   }, [kiwisdr, place]);
 
+  const nearbyEq = useMemo(() => {
+    if (!place) return [];
+    return earthquakes
+      .filter((e) => Math.hypot(e.lat - place.lat, e.lon - place.lon) < 7)
+      .slice(0, 10);
+  }, [earthquakes, place]);
+
+  const autoBrief = useMemo(() => {
+    if (!place) return '';
+    const parts: string[] = [];
+    if (forecast) {
+      parts.push(
+        `${place.city} şu an ${Math.round(forecast.temp_c)}°C (${weatherCodeText(forecast.weather_code)}), rüzgâr ${Math.round(forecast.wind_kmh)} km/s, hava kalitesi AQI ${forecast.us_aqi || '--'}.`
+      );
+      if (forecast.sea_temp_c !== null) {
+        parts.push(`Kıyı deniz suyu sıcaklığı ${forecast.sea_temp_c.toFixed(1)}°C, dalga yüksekliği ${(forecast.wave_height_m ?? 0).toFixed(1)} m.`);
+      }
+    }
+    if (nearbyEq.length > 0) {
+      parts.push(`Yakın çevrede son 24 saatte ${nearbyEq.length} sismik kayıt var (en büyüğü M${Math.max(...nearbyEq.map((e) => e.mag)).toFixed(1)}).`);
+    } else {
+      parts.push('Yakın çevrede güncel sismik aktivite sakin.');
+    }
+    if (countryCtx && countryCtx.ooni_alerts.length > 0) {
+      parts.push(`OONI ölçümlerinde ${countryCtx.ooni_alerts.length} erişim anomalisi kaydedildi.`);
+    }
+    if (news.length > 0) {
+      parts.push(`Öne çıkan başlık: "${news[0].title}".`);
+    }
+    return parts.join(' ');
+  }, [place, forecast, nearbyEq, countryCtx, news]);
+
   if (!place) return null;
 
   const regionCams = cameras.filter(
@@ -187,10 +219,6 @@ export function RegionDrawer({
       Math.hypot(c.lat - place.lat, c.lon - place.lon) < 8
   );
   const displayCams = regionCams.length > 0 ? regionCams.slice(0, 20) : cameras.slice(0, 20);
-
-  const nearbyEq = earthquakes
-    .filter((e) => Math.hypot(e.lat - place.lat, e.lon - place.lon) < 7)
-    .slice(0, 10);
 
   const astro = computeAstroInfo(
     forecast?.daily[0]?.sunrise,
@@ -231,31 +259,6 @@ export function RegionDrawer({
     setNewCamUrl('');
     setShowAddCam(false);
   };
-
-  const autoBrief = useMemo(() => {
-    if (!place) return '';
-    const parts: string[] = [];
-    if (forecast) {
-      parts.push(
-        `${place.city} şu an ${Math.round(forecast.temp_c)}°C (${weatherCodeText(forecast.weather_code)}), rüzgâr ${Math.round(forecast.wind_kmh)} km/s, hava kalitesi AQI ${forecast.us_aqi || '--'}.`
-      );
-      if (forecast.sea_temp_c !== null) {
-        parts.push(`Kıyı deniz suyu sıcaklığı ${forecast.sea_temp_c.toFixed(1)}°C, dalga yüksekliği ${(forecast.wave_height_m ?? 0).toFixed(1)} m.`);
-      }
-    }
-    if (nearbyEq.length > 0) {
-      parts.push(`Yakın çevrede son 24 saatte ${nearbyEq.length} sismik kayıt var (en büyüğü M${Math.max(...nearbyEq.map((e) => e.mag)).toFixed(1)}).`);
-    } else {
-      parts.push('Yakın çevrede güncel sismik aktivite sakin.');
-    }
-    if (countryCtx && countryCtx.ooni_alerts.length > 0) {
-      parts.push(`OONI ölçümlerinde ${countryCtx.ooni_alerts.length} erişim anomalisi kaydedildi.`);
-    }
-    if (news.length > 0) {
-      parts.push(`Öne çıkan başlık: "${news[0].title}".`);
-    }
-    return parts.join(' ');
-  }, [place, forecast, nearbyEq, countryCtx, news]);
 
   const runAiBrief = async () => {
     sound.playClick();
