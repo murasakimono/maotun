@@ -76,6 +76,21 @@ function yesterdayIso(): string {
   return d.toISOString().slice(0, 10);
 }
 
+// Isolated 1-second clock so App & GlobeMap NEVER re-render every second!
+function LiveClock() {
+  const [clock, setClock] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setClock(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <>
+      <span className="text-[#E6E8EC]">{clock.toLocaleTimeString('tr-TR', { hour12: false })}</span>
+      <span>UTC {clock.toISOString().slice(11, 16)}</span>
+    </>
+  );
+}
+
 export function App() {
   // Live Feed States
   const [earthquakes, setEarthquakes] = useState<EarthquakeItem[]>([]);
@@ -231,13 +246,7 @@ export function App() {
   const [searchText, setSearchText] = useState('');
   const [searchResults, setSearchResults] = useState<PlaceInfo[]>([]);
   const [cursor, setCursor] = useState({ lat: 38.8, lon: 32.5, zoom: 3.15 });
-  const [clock, setClock] = useState(() => new Date());
   const autopilotIdxRef = useRef(0);
-
-  useEffect(() => {
-    const id = setInterval(() => setClock(new Date()), 1000);
-    return () => clearInterval(id);
-  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -317,10 +326,10 @@ export function App() {
     return () => clearInterval(id);
   }, [refreshAll]);
 
-  // Smooth SGP4 Satellite Tick
+  // Smooth SGP4 Satellite Tick (every 5s, isolated in GlobeMap)
   useEffect(() => {
     if (satTles.length === 0) return;
-    const id = setInterval(() => setSatellites(propagateSatellites(satTles)), 3000);
+    const id = setInterval(() => setSatellites(propagateSatellites(satTles)), 5000);
     return () => clearInterval(id);
   }, [satTles]);
 
@@ -597,8 +606,7 @@ export function App() {
           </div>
           <span className="h-3.5 w-px bg-white/10 hidden md:block" />
           <div className="hidden md:flex items-center gap-2.5 font-mono-tech text-[11px] text-[#8E95A3]">
-            <span className="text-[#E6E8EC]">{clock.toLocaleTimeString('tr-TR', { hour12: false })}</span>
-            <span>UTC {clock.toISOString().slice(11, 16)}</span>
+            <LiveClock />
             {spaceWeather && (
               <span className={spaceWeather.kp_index >= 5 ? 'text-[#E85D4A]' : 'text-[#4ADE80]'}>
                 Kp {spaceWeather.kp_index.toFixed(1)}

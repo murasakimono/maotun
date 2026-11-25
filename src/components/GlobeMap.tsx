@@ -147,6 +147,21 @@ export function GlobeMap({
   const measureModeRef = useRef(measureMode);
   measureModeRef.current = measureMode;
 
+  // Fresh callback refs so map.on('click') / mousemove NEVER hit stale closures!
+  const onSelectCoordRef = useRef(onSelectCoord);
+  onSelectCoordRef.current = onSelectCoord;
+  const onSelectCameraRef = useRef(onSelectCamera);
+  onSelectCameraRef.current = onSelectCamera;
+  const onSelectAirportRef = useRef(onSelectAirport);
+  onSelectAirportRef.current = onSelectAirport;
+  const onSelectEqRef = useRef(onSelectEq);
+  onSelectEqRef.current = onSelectEq;
+  const onSelectSatRef = useRef(onSelectSat);
+  onSelectSatRef.current = onSelectSat;
+  const onCursorMoveRef = useRef(onCursorMove);
+  onCursorMoveRef.current = onCursorMove;
+  const lastMoveTsRef = useRef(0);
+
   // Initialize MapLibre v5 3D Globe
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -286,7 +301,14 @@ export function GlobeMap({
       map.addLayer({ id: 'eq-felt-line', type: 'line', source: 'eq-felt', paint: { 'line-color': '#E85D4A', 'line-width': 1.4, 'line-dasharray': [3, 3] } });
 
       map.addSource('measure-arc', { type: 'geojson', data: EMPTY_FC });
-      map.addLayer({ id: 'measure-arc-line', type: 'line', source: 'measure-arc', paint: { 'line-color': '#E5A952', 'line-width': 2.2, 'line-dasharray': [4, 2] } });
+      map.addLayer({ id: 'measure-arc-line', type: 'line', source: 'measure-arc', paint: { 'line-color': '#E5A952', 'line-width': 2.4, 'line-dasharray': [4, 2] } });
+      map.addSource('measure-pts', { type: 'geojson', data: EMPTY_FC });
+      map.addLayer({
+        id: 'measure-pts-circle',
+        type: 'circle',
+        source: 'measure-pts',
+        paint: { 'circle-radius': 6.5, 'circle-color': '#E5A952', 'circle-stroke-color': '#FFFFFF', 'circle-stroke-width': 2 },
+      });
 
       map.addSource('orbit-path', { type: 'geojson', data: EMPTY_FC });
       map.addLayer({ id: 'orbit-path-line', type: 'line', source: 'orbit-path', paint: { 'line-color': '#E5A952', 'line-width': 1.8, 'line-opacity': 0.85, 'line-dasharray': [4, 3] } });
@@ -418,7 +440,10 @@ export function GlobeMap({
     });
 
     map.on('mousemove', (e) => {
-      onCursorMove(e.lngLat.lat, e.lngLat.lng, map.getZoom());
+      const now = performance.now();
+      if (now - lastMoveTsRef.current < 120) return; // Throttle to ~8 FPS for silky-smooth 60 FPS globe!
+      lastMoveTsRef.current = now;
+      onCursorMoveRef.current(e.lngLat.lat, e.lngLat.lng, map.getZoom());
     });
 
     const clickableLayers = [
@@ -443,7 +468,7 @@ export function GlobeMap({
     map.on('click', (e) => {
       if (measureModeRef.current) {
         sound.playClick();
-        onSelectCoord(e.lngLat.lat, e.lngLat.lng);
+        onSelectCoordRef.current(e.lngLat.lat, e.lngLat.lng);
         return;
       }
 
@@ -458,17 +483,17 @@ export function GlobeMap({
 
         if (f.layer.id === 'airports-pt') {
           const ap = MAJOR_AIRPORTS.find((a) => a.iata === p.iata);
-          if (ap) onSelectAirport(ap);
+          if (ap) onSelectAirportRef.current(ap);
           return;
         }
         if (f.layer.id === 'cameras-pt') {
           const found = camsRef.current.find((c) => c.id === p.id);
-          if (found) onSelectCamera(found);
+          if (found) onSelectCameraRef.current(found);
           return;
         }
         if (f.layer.id === 'eq-core') {
           const found = eqsRef.current.find((q) => q.id === p.id) || null;
-          onSelectEq(found);
+          onSelectEqRef.current(found);
           const feltKm = Math.round(Math.pow(10, 0.45 * Number(p.mag || 3)));
           new maplibregl.Popup({ closeOnClick: true })
             .setLngLat(e.lngLat)
@@ -482,7 +507,7 @@ export function GlobeMap({
         }
         if (f.layer.id === 'satellites-pt') {
           const found = satsRef.current.find((s) => s.id === p.id);
-          if (found) onSelectSat(found);
+          if (found) onSelectSatRef.current(found);
           new maplibregl.Popup({ closeOnClick: true })
             .setLngLat(e.lngLat)
             .setHTML(
@@ -524,7 +549,7 @@ export function GlobeMap({
       }
 
       sound.playPing();
-      onSelectCoord(e.lngLat.lat, e.lngLat.lng);
+      onSelectCoordRef.current(e.lngLat.lat, e.lngLat.lng);
     });
 
     mapRef.current = map;
@@ -722,11 +747,10 @@ export function GlobeMap({
         : EMPTY_FC
     );
     setData('measure-arc', measurePts.length === 2 ? buildGreatCircleArcGeoJSON(measurePts[0], measurePts[1]) : EMPTY_FC);
+    setData('measure-pts', pts(measurePts));
     setData('disasters', pts(disasters));
     setData('flights', pts(mergedFlights));
     setData('flight-trails', { type: 'FeatureCollection', features: trailFeatures });
-    setData('satellites', pts(satellites));
-    setData('orbit-path', selectedSat ? computeOrbitPathGeoJSON(selectedSat) : EMPTY_FC);
     setData('rockets', pts(rockets));
     setData('fireballs', pts(fireballs));
     setData('tor', pts(torRelays));
@@ -783,8 +807,6 @@ export function GlobeMap({
     disasters,
     flights,
     militaryFlights,
-    satellites,
-    selectedSat,
     rockets,
     fireballs,
     torRelays,
@@ -800,6 +822,26 @@ export function GlobeMap({
     visitedPlakas,
     layers,
   ]);
+
+  // Isolated lightweight satellite update (so 5s SGP4 ticks NEVER re-upload 15 other layers!)
+  useEffect(() => {
+    const m = mapRef.current;
+    if (!m || !readyRef.current) return;
+    (m.getSource('satellites') as maplibregl.GeoJSONSource | undefined)?.setData({
+      type: 'FeatureCollection',
+      features: satellites.map((s) => ({
+        type: 'Feature',
+        properties: { ...s },
+        geometry: { type: 'Point', coordinates: [s.lon, s.lat] },
+      })),
+    });
+    (m.getSource('orbit-path') as maplibregl.GeoJSONSource | undefined)?.setData(
+      selectedSat ? computeOrbitPathGeoJSON(selectedSat) : EMPTY_FC
+    );
+    if (m.getLayer('orbit-path-line')) {
+      m.setLayoutProperty('orbit-path-line', 'visibility', layers.satellites && !!selectedSat ? 'visible' : 'none');
+    }
+  }, [satellites, selectedSat, layers.satellites]);
 
   useEffect(() => {
     if (!flyTarget || !mapRef.current) return;
