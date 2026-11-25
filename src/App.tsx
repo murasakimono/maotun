@@ -28,20 +28,27 @@ import type {
   RocketLaunch,
   SatelliteLive,
   SatelliteTle,
+  SavedPreset,
   ShipItem,
   SpaceWeather,
   TorRelay,
+  WindTempPoint,
 } from './types';
 import { api } from './api';
 import { DEFAULT_CAMERAS, QUICK_CITIES } from './cameras';
 import { haversineKm, propagateSatellites } from './geo';
 import { sound } from './sound';
+import { ambient, type AmbientMode } from './ambient';
+import type { MajorAirport } from './data/airports';
 import { GlobeMap } from './components/GlobeMap';
 import { RegionDrawer, type DrawerPrimaryTab, type MediaSubTab } from './components/RegionDrawer';
 import { FloatingDock } from './components/FloatingDock';
 import { MiniRadioBar } from './components/MiniRadioBar';
 import { WikiPulseBar } from './components/WikiPulseBar';
 import { DiscoveryModal } from './components/DiscoveryModal';
+import { CompareModal } from './components/CompareModal';
+import { TurkeyFogModal } from './components/TurkeyFogModal';
+import { AirportModal } from './components/AirportModal';
 import { MultiCamWall } from './components/MultiCamWall';
 import { AlertModal } from './components/AlertModal';
 import { CommandPalette, type PaletteAction } from './components/CommandPalette';
@@ -88,6 +95,34 @@ export function App() {
   const [ships, setShips] = useState<ShipItem[]>([]);
   const [fires, setFires] = useState<FireHotspot[]>([]);
   const [osmPois, setOsmPois] = useState<OsmPoi[]>([]);
+  const [windTempGrid, setWindTempGrid] = useState<WindTempPoint[]>([]);
+  const [ambientMode, setAmbientMode] = useState<AmbientMode>('off');
+  const [selectedAirport, setSelectedAirport] = useState<MajorAirport | null>(null);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [turkeyFogOpen, setTurkeyFogOpen] = useState(false);
+
+  const [visitedPlakas, setVisitedPlakas] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('maotun_tr_visited_v4');
+      return saved ? JSON.parse(saved) : ['31', '34'];
+    } catch {
+      return ['31', '34'];
+    }
+  });
+
+  const [presets, setPresets] = useState<SavedPreset[]>(() => {
+    const defaults: SavedPreset[] = [
+      { id: 'pre-ist', name: 'İstanbul Takip', lat: 41.01, lon: 28.98, zoom: 9.5, layers: { earthquakes: true, faults: true, railways: true, radar: true, airports: true } },
+      { id: 'pre-air', name: 'Havacılık Radarı', lat: 41.0, lon: 29.0, zoom: 5.5, layers: { flights: true, military: true, flightTrails: true, airports: true } },
+      { id: 'pre-tr', name: 'Türkiye Keşif', lat: 39.0, lon: 35.2, zoom: 5.6, layers: { turkeyFog: true, faults: true, earthquakes: true } },
+    ];
+    try {
+      const saved = localStorage.getItem('maotun_presets_v4');
+      return saved ? JSON.parse(saved) : defaults;
+    } catch {
+      return defaults;
+    }
+  });
 
   // Persisted User States
   const [customCameras, setCustomCameras] = useState<LiveCamera[]>(() => {
@@ -135,12 +170,16 @@ export function App() {
     faults: true,
     disasters: true,
     flights: true,
+    flightTrails: true,
+    airports: true,
     military: true,
     satellites: true,
     rockets: true,
     fireballs: false,
     kiwisdr: false,
     radar: false,
+    windFlow: false,
+    tempHeat: false,
     aurora: false,
     cables: true,
     tor: false,
@@ -152,6 +191,7 @@ export function App() {
     terrain: false,
     nasaGibs: false,
     discoveries: true,
+    turkeyFog: false,
   });
 
   // Persistent Background Radio Player (keeps playing when drawer closes!)
@@ -207,7 +247,7 @@ export function App() {
   const refreshAll = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [eq, dis, flt, mil, tles, sdr, rv, sw, shp, liveCams, rck, fb, tor] = await Promise.all([
+      const [eq, dis, flt, mil, tles, sdr, rv, sw, shp, liveCams, rck, fb, tor, wtg] = await Promise.all([
         api.getEarthquakes().catch(() => []),
         api.getDisasters().catch(() => []),
         api.getFlights(39.0, 34.0, 250).catch(() => []),
@@ -221,7 +261,9 @@ export function App() {
         api.getRockets().catch(() => []),
         api.getFireballs().catch(() => []),
         api.getTorRelays().catch(() => []),
+        api.getWindTempGrid().catch(() => []),
       ]);
+      setWindTempGrid(wtg);
       setEarthquakes(eq);
       setDisasters(dis);
       setFlights(flt);
@@ -511,6 +553,8 @@ export function App() {
         cameras={cameras}
         osmPois={osmPois}
         discoveries={discoveries}
+        windTempGrid={windTempGrid}
+        visitedPlakas={visitedPlakas}
         measurePts={measurePts}
         measureMode={measureMode}
         layers={layers}
@@ -518,6 +562,7 @@ export function App() {
         nasaGibsDate={nasaGibsDate}
         flyTarget={flyTarget}
         onSelectCoord={handleSelectCoord}
+        onSelectAirport={setSelectedAirport}
         onSelectCamera={(cam) => {
           setActiveCamera(cam);
           setSelectedPlace({
@@ -710,6 +755,30 @@ export function App() {
           fires: fires.length,
           cams: cameras.length,
           discoveries: discoveries.length,
+          visitedCount: visitedPlakas.length,
+        }}
+        ambientMode={ambientMode}
+        onChangeAmbient={(m) => {
+          setAmbientMode(m);
+          ambient.setMode(m);
+        }}
+        presets={presets}
+        onApplyPreset={(p) => {
+          setLayers((prev) => ({ ...prev, ...p.layers }));
+          setFlyTarget({ lat: p.lat, lon: p.lon, zoom: p.zoom, ts: Date.now() });
+        }}
+        onSaveCurrentPreset={() => {
+          const next: SavedPreset = {
+            id: `pre-${Date.now()}`,
+            name: selectedPlace?.city || `Profil ${presets.length + 1}`,
+            lat: cursor.lat,
+            lon: cursor.lon,
+            zoom: cursor.zoom,
+            layers: { ...layers },
+          };
+          const updated = [...presets, next].slice(-6);
+          setPresets(updated);
+          localStorage.setItem('maotun_presets_v4', JSON.stringify(updated));
         }}
         measureMode={measureMode}
         onToggleMeasure={() => { setMeasureMode((v) => !v); setMeasurePts([]); }}
@@ -721,6 +790,8 @@ export function App() {
         onOpenRadio={() => openDrawerTo('media', 'radio')}
         onOpenTv={() => openDrawerTo('media', 'tv')}
         onOpenDiscovery={() => setDiscoveryOpen(true)}
+        onOpenTurkeyFog={() => setTurkeyFogOpen(true)}
+        onOpenCompare={() => setCompareOpen(true)}
         onOpenAlerts={() => setAlertsOpen(true)}
         onOpenPalette={() => setPaletteOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -763,6 +834,21 @@ export function App() {
         onDeletePin={(id) => saveDiscoveries(discoveries.filter((p) => p.id !== id))}
         onFlyTo={(lat, lon, zoom) => setFlyTarget({ lat, lon, zoom, ts: Date.now() })}
       />
+      <CompareModal open={compareOpen} onClose={() => setCompareOpen(false)} />
+      <TurkeyFogModal
+        open={turkeyFogOpen}
+        onClose={() => setTurkeyFogOpen(false)}
+        visitedPlakas={visitedPlakas}
+        onToggleProvince={(plaka) => {
+          const next = visitedPlakas.includes(plaka)
+            ? visitedPlakas.filter((x) => x !== plaka)
+            : [...visitedPlakas, plaka];
+          setVisitedPlakas(next);
+          localStorage.setItem('maotun_tr_visited_v4', JSON.stringify(next));
+        }}
+        onFlyTo={(lat, lon, zoom) => setFlyTarget({ lat, lon, zoom, ts: Date.now() })}
+      />
+      <AirportModal airport={selectedAirport} onClose={() => setSelectedAirport(null)} />
       <MultiCamWall open={wallOpen} onClose={() => setWallOpen(false)} cameras={cameras} />
       <AlertModal
         open={alertsOpen}

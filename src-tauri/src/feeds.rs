@@ -1465,6 +1465,50 @@ pub async fn fetch_live_cameras() -> Vec<LiveCameraItem> {
     cams
 }
 
+pub async fn fetch_wind_temp_grid() -> Vec<WindTempPoint> {
+    let client = http_client();
+    // 5x7 global+Europe+Turkey dense grid fetched in ONE Open-Meteo batch call!
+    let mut coords: Vec<(f64, f64)> = Vec::new();
+    for lat in [20.0, 32.0, 39.0, 46.0, 56.0] {
+        for lon in [-100.0, -74.0, -5.0, 12.0, 29.0, 36.0, 50.0, 105.0, 139.0] {
+            coords.push((lat, lon));
+        }
+    }
+    // Add dense Turkey grid points
+    for (la, lo) in [
+        (41.0, 29.0), (39.9, 32.8), (38.4, 27.1), (36.2, 36.1), (36.9, 30.7),
+        (41.0, 39.7), (37.9, 40.2), (38.7, 35.5), (40.2, 29.1), (37.0, 35.3),
+    ] {
+        coords.push((la, lo));
+    }
+
+    let lats: String = coords.iter().map(|(la, _)| format!("{:.1}", la)).collect::<Vec<_>>().join(",");
+    let lons: String = coords.iter().map(|(_, lo)| format!("{:.1}", lo)).collect::<Vec<_>>().join(",");
+    let url = format!(
+        "https://api.open-meteo.com/v1/forecast?latitude={}&longitude={}&current=temperature_2m,wind_speed_10m,wind_direction_10m",
+        lats, lons
+    );
+
+    let mut out = Vec::new();
+    if let Ok(resp) = client.get(&url).send().await {
+        if let Ok(arr) = resp.json::<Vec<serde_json::Value>>().await {
+            for (idx, item) in arr.iter().enumerate() {
+                if let Some(&(la, lo)) = coords.get(idx) {
+                    let cur = &item["current"];
+                    out.push(WindTempPoint {
+                        lat: la,
+                        lon: lo,
+                        temp_c: cur["temperature_2m"].as_f64().unwrap_or(15.0),
+                        wind_kmh: cur["wind_speed_10m"].as_f64().unwrap_or(12.0),
+                        wind_dir: cur["wind_direction_10m"].as_f64().unwrap_or(180.0),
+                    });
+                }
+            }
+        }
+    }
+    out
+}
+
 fn url_encode(s: &str) -> String {
     s.bytes()
         .map(|b| match b {

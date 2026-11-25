@@ -24,9 +24,12 @@ import type {
   TvChannel,
   WikiPlace,
   WildlifeObs,
+  WindTempPoint,
 } from './types';
 
 export const api = {
+  getProxyPort: () => invoke<number>('get_proxy_port'),
+  getWindTempGrid: () => invoke<WindTempPoint[]>('get_wind_temp_grid'),
   getEarthquakes: () => invoke<EarthquakeItem[]>('get_earthquakes'),
   getDisasters: () => invoke<DisasterItem[]>('get_disasters'),
   getFlights: (lat: number, lon: number, radiusNm = 200) =>

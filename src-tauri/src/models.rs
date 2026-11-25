@@ -299,3 +299,12 @@ pub struct LiveCameraItem {
     pub embed_url: String,
     pub refresh_sec: Option<u32>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WindTempPoint {
+    pub lat: f64,
+    pub lon: f64,
+    pub temp_c: f64,
+    pub wind_kmh: f64,
+    pub wind_dir: f64,
+}

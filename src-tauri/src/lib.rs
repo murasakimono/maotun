@@ -1,7 +1,18 @@
 mod feeds;
 mod models;
+mod proxy;
 
 use models::*;
+
+#[tauri::command]
+fn get_proxy_port() -> u16 {
+    proxy::get_port()
+}
+
+#[tauri::command]
+async fn get_wind_temp_grid() -> Vec<WindTempPoint> {
+    feeds::fetch_wind_temp_grid().await
+}
 
 #[tauri::command]
 async fn get_earthquakes() -> Vec<EarthquakeItem> {
@@ -146,7 +157,13 @@ async fn ai_region_brief(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .setup(|_app| {
+            proxy::start_proxy_server();
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
+            get_proxy_port,
+            get_wind_temp_grid,
             get_earthquakes,
             get_disasters,
             get_flights,

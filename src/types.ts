@@ -319,12 +319,16 @@ export interface LayerState {
   faults: boolean;
   disasters: boolean;
   flights: boolean;
+  flightTrails: boolean;
+  airports: boolean;
   military: boolean;
   satellites: boolean;
   rockets: boolean;
   fireballs: boolean;
   kiwisdr: boolean;
   radar: boolean;
+  windFlow: boolean;
+  tempHeat: boolean;
   aurora: boolean;
   cables: boolean;
   tor: boolean;
@@ -336,6 +340,24 @@ export interface LayerState {
   terrain: boolean;
   nasaGibs: boolean;
   discoveries: boolean;
+  turkeyFog: boolean;
+}
+
+export interface WindTempPoint {
+  lat: number;
+  lon: number;
+  temp_c: number;
+  wind_kmh: number;
+  wind_dir: number;
+}
+
+export interface SavedPreset {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  zoom: number;
+  layers: Partial<LayerState>;
 }
 
 export interface ApiKeysConfig {
