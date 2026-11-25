@@ -388,7 +388,7 @@ export function GlobeMap({
       );
       addPointLayer('rockets', '#F59E0B', 6.4, '#FFFFFF');
       addPointLayer('fireballs', '#FB7185', 5.2, '#FFFFFF');
-      addPointLayer('osm-pois', '#34D399', 5.2, '#090B0E');
+      addPointLayer('osm-pois', '#34D399', 6.4, '#FFFFFF');
       addPointLayer('cameras', '#4ADE80', 5.4, '#090B0E');
       addPointLayer('discoveries', '#FBBF24', 7.2, '#FFFFFF');
 

@@ -829,42 +829,64 @@ pub async fn fetch_inaturalist(lat: f64, lon: f64) -> Vec<WildlifeObs> {
 }
 
 pub async fn fetch_osm_nearby(lat: f64, lon: f64, kind: &str) -> Vec<OsmPoi> {
-    let client = http_client();
+    let client = reqwest::Client::builder()
+        .user_agent("MAOTUN/5.3 (Global Atlas; contact@maotun.app)")
+        .timeout(Duration::from_secs(9))
+        .build()
+        .unwrap_or_else(|_| http_client().clone());
+
     let query = match kind {
         "metro" => format!(
-            "[out:json][timeout:10];(node[\"station\"=\"subway\"](around:6000,{:.4},{:.4});node[\"railway\"=\"station\"](around:6000,{:.4},{:.4});node[\"railway\"=\"tram_stop\"](around:3000,{:.4},{:.4}););out 28;",
+            "[out:json][timeout:8];(node[\"station\"=\"subway\"](around:4500,{:.4},{:.4});node[\"railway\"=\"station\"](around:4500,{:.4},{:.4});node[\"railway\"=\"tram_stop\"](around:2500,{:.4},{:.4}););out 28;",
             lat, lon, lat, lon, lat, lon
         ),
         "hospital" => format!(
-            "[out:json][timeout:10];(node[\"amenity\"=\"hospital\"](around:5000,{:.4},{:.4});way[\"amenity\"=\"hospital\"](around:5000,{:.4},{:.4}););out center 20;",
+            "[out:json][timeout:8];(node[\"amenity\"=\"hospital\"](around:4000,{:.4},{:.4});way[\"amenity\"=\"hospital\"](around:4000,{:.4},{:.4}););out center 22;",
             lat, lon, lat, lon
         ),
         "pharmacy" => format!(
-            "[out:json][timeout:10];node[\"amenity\"=\"pharmacy\"](around:3500,{:.4},{:.4});out 25;",
+            "[out:json][timeout:8];node[\"amenity\"=\"pharmacy\"](around:2500,{:.4},{:.4});out 25;",
             lat, lon
         ),
+        "cafe" => format!(
+            "[out:json][timeout:8];node[\"amenity\"=\"cafe\"][\"name\"](around:2000,{:.4},{:.4});out 28;",
+            lat, lon
+        ),
+        "restaurant" => format!(
+            "[out:json][timeout:8];(node[\"amenity\"=\"restaurant\"][\"name\"](around:2000,{:.4},{:.4});node[\"amenity\"=\"fast_food\"][\"name\"](around:1800,{:.4},{:.4}););out 28;",
+            lat, lon, lat, lon
+        ),
+        "market" => format!(
+            "[out:json][timeout:8];(node[\"shop\"=\"supermarket\"][\"name\"](around:2200,{:.4},{:.4});node[\"shop\"=\"convenience\"][\"name\"](around:1600,{:.4},{:.4}););out 25;",
+            lat, lon, lat, lon
+        ),
         "park" => format!(
-            "[out:json][timeout:10];(node[\"leisure\"=\"park\"][\"name\"](around:4000,{:.4},{:.4});way[\"leisure\"=\"park\"][\"name\"](around:4000,{:.4},{:.4}););out center 20;",
+            "[out:json][timeout:8];(node[\"leisure\"=\"park\"][\"name\"](around:3500,{:.4},{:.4});way[\"leisure\"=\"park\"][\"name\"](around:3500,{:.4},{:.4}););out center 22;",
             lat, lon, lat, lon
         ),
         "ev" => format!(
-            "[out:json][timeout:10];node[\"amenity\"=\"charging_station\"](around:5000,{:.4},{:.4});out 24;",
+            "[out:json][timeout:8];node[\"amenity\"=\"charging_station\"](around:5000,{:.4},{:.4});out 24;",
             lat, lon
         ),
+        "museum" => format!(
+            "[out:json][timeout:8];(node[\"tourism\"=\"museum\"][\"name\"](around:5000,{:.4},{:.4});way[\"tourism\"=\"museum\"][\"name\"](around:5000,{:.4},{:.4});node[\"historic\"][\"name\"](around:3500,{:.4},{:.4}););out center 22;",
+            lat, lon, lat, lon, lat, lon
+        ),
         "quest" => format!(
-            "[out:json][timeout:10];(node[\"tourism\"~\"attraction|museum|viewpoint\"][\"name\"](around:5000,{:.4},{:.4});node[\"historic\"][\"name\"](around:5000,{:.4},{:.4}););out 25;",
+            "[out:json][timeout:8];(node[\"tourism\"~\"attraction|museum|viewpoint\"][\"name\"](around:5000,{:.4},{:.4});node[\"historic\"][\"name\"](around:5000,{:.4},{:.4}););out 25;",
             lat, lon, lat, lon
         ),
         _ => format!(
-            "[out:json][timeout:10];node[\"tourism\"=\"museum\"][\"name\"](around:5000,{:.4},{:.4});out 20;",
+            "[out:json][timeout:8];node[\"amenity\"=\"cafe\"][\"name\"](around:2000,{:.4},{:.4});out 20;",
             lat, lon
         ),
     };
 
     let mut out = Vec::new();
+    // Primary: fast French Overpass mirror, then main Overpass mirror
     let mirrors = [
+        "https://overpass.openstreetmap.fr/api/interpreter",
         "https://overpass-api.de/api/interpreter",
-        "https://overpass.kumi.systems/api/interpreter",
     ];
     for mirror in mirrors {
         if let Ok(resp) = client
@@ -890,8 +912,10 @@ pub async fn fetch_osm_nearby(lat: f64, lon: f64, kind: &str) -> Vec<OsmPoi> {
                         if elat == 0.0 && elon == 0.0 {
                             continue;
                         }
-                        let extra = tags["operator"]
+                        let extra = tags["cuisine"]
                             .as_str()
+                            .or_else(|| tags["operator"].as_str())
+                            .or_else(|| tags["brand"].as_str())
                             .or_else(|| tags["historic"].as_str())
                             .or_else(|| tags["tourism"].as_str())
                             .or_else(|| tags["addr:street"].as_str())
@@ -907,12 +931,116 @@ pub async fn fetch_osm_nearby(lat: f64, lon: f64, kind: &str) -> Vec<OsmPoi> {
                         });
                     }
                     if !out.is_empty() {
-                        break;
+                        return out;
                     }
                 }
             }
         }
     }
+
+    // Guaranteed Fallback 1: Nominatim Bounded Viewbox Search (never times out)
+    let nom_q = match kind {
+        "metro" => "metro",
+        "hospital" => "hospital",
+        "pharmacy" => "pharmacy",
+        "cafe" => "cafe",
+        "restaurant" => "restaurant",
+        "market" => "supermarket",
+        "park" => "park",
+        "ev" => "charging station",
+        "museum" | "quest" => "museum",
+        _ => kind,
+    };
+    let d_lon = 0.045;
+    let d_lat = 0.035;
+    let nom_url = format!(
+        "https://nominatim.openstreetmap.org/search?q={}&viewbox={:.4},{:.4},{:.4},{:.4}&bounded=1&format=json&limit=18",
+        url_encode(nom_q),
+        lon - d_lon,
+        lat + d_lat,
+        lon + d_lon,
+        lat - d_lat
+    );
+    if let Ok(resp) = client.get(&nom_url).send().await {
+        if let Ok(arr) = resp.json::<Vec<serde_json::Value>>().await {
+            for (i, item) in arr.iter().enumerate() {
+                let name = item["name"]
+                    .as_str()
+                    .filter(|s| !s.trim().is_empty())
+                    .or_else(|| item["display_name"].as_str().and_then(|d| d.split(',').next()))
+                    .unwrap_or("")
+                    .trim()
+                    .to_string();
+                let elat = item["lat"].as_str().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+                let elon = item["lon"].as_str().and_then(|s| s.parse::<f64>().ok()).unwrap_or(0.0);
+                if name.is_empty() || (elat == 0.0 && elon == 0.0) {
+                    continue;
+                }
+                let extra = item["type"].as_str().unwrap_or(kind).to_string();
+                out.push(OsmPoi {
+                    id: item["osm_id"].as_i64().unwrap_or(900_000 + i as i64),
+                    name,
+                    kind: kind.to_string(),
+                    lat: elat,
+                    lon: elon,
+                    extra,
+                });
+            }
+            if !out.is_empty() {
+                return out;
+            }
+        }
+    }
+
+    // Guaranteed Fallback 2: Komoot Photon Geocoder with osm_tag + bbox
+    let (ph_q, ph_tag) = match kind {
+        "hospital" => ("hastane", "amenity:hospital"),
+        "pharmacy" => ("eczane", "amenity:pharmacy"),
+        "cafe" => ("cafe", "amenity:cafe"),
+        "restaurant" => ("restoran", "amenity:restaurant"),
+        "market" => ("market", "shop:supermarket"),
+        "park" => ("park", "leisure:park"),
+        "museum" | "quest" => ("museum", "tourism:museum"),
+        _ => (nom_q, ""),
+    };
+    let tag_part = if ph_tag.is_empty() { String::new() } else { format!("&osm_tag={}", ph_tag) };
+    let ph_url = format!(
+        "https://photon.komoot.io/api/?q={}&lat={:.4}&lon={:.4}&bbox={:.4},{:.4},{:.4},{:.4}&limit=15{}",
+        url_encode(ph_q),
+        lat,
+        lon,
+        lon - 0.06,
+        lat - 0.05,
+        lon + 0.06,
+        lat + 0.05,
+        tag_part
+    );
+    if let Ok(resp) = client.get(&ph_url).send().await {
+        if let Ok(j) = resp.json::<serde_json::Value>().await {
+            if let Some(feats) = j["features"].as_array() {
+                for (i, f) in feats.iter().enumerate() {
+                    let props = &f["properties"];
+                    let name = props["name"].as_str().unwrap_or("").trim().to_string();
+                    let coords = f["geometry"]["coordinates"].as_array();
+                    let elon = coords.and_then(|c| c.first()).and_then(|v| v.as_f64()).unwrap_or(0.0);
+                    let elat = coords.and_then(|c| c.get(1)).and_then(|v| v.as_f64()).unwrap_or(0.0);
+                    if name.is_empty() || (elat == 0.0 && elon == 0.0) {
+                        continue;
+                    }
+                    let extra = props["street"].as_str().or_else(|| props["district"].as_str()).unwrap_or(kind).to_string();
+                    out.push(OsmPoi {
+                        id: props["osm_id"].as_i64().unwrap_or(950_000 + i as i64),
+                        name,
+                        kind: kind.to_string(),
+                        lat: elat,
+                        lon: elon,
+                        extra,
+                    });
+                }
+            }
+        }
+    }
+
     out
 }
 
@@ -1428,7 +1556,41 @@ pub async fn ai_region_brief(region: String, summary_context: String, endpoint: 
 
 pub async fn fetch_live_cameras() -> Vec<LiveCameraItem> {
     let client = http_client();
-    let mut cams: Vec<LiveCameraItem> = Vec::new();
+    // 1. Live-verified Istanbul / Turkey municipal HLS streams (IBB Turistik & TKM)
+    let mut cams: Vec<LiveCameraItem> = vec![
+        ("tr-ibb-taksim", "Taksim Meydanı (İBB Canlı)", "İstanbul, Beyoğlu", 41.0370, 28.9850, "https://kamerayayin.ibb.istanbul/turistikcam/taksim.stream/playlist.m3u8"),
+        ("tr-ibb-pierreloti", "Pierre Loti Tepesi (İBB Canlı)", "İstanbul, Eyüpsultan", 41.0537, 28.9336, "https://kamerayayin.ibb.istanbul/turistikcam/pierreloti.stream/playlist.m3u8"),
+        ("tr-ibb-eyupsultan", "Eyüpsultan Meydanı (İBB Canlı)", "İstanbul, Eyüpsultan", 41.0478, 28.9339, "https://kamerayayin.ibb.istanbul/turistikcam/eyupsultan.stream/playlist.m3u8"),
+        ("tr-ibb-miniaturk", "Miniatürk & Haliç (İBB Canlı)", "İstanbul, Beyoğlu", 41.0592, 28.9491, "https://kamerayayin.ibb.istanbul/turistikcam/miniaturk.stream/playlist.m3u8"),
+        ("tr-ibb-eminonu", "Eminönü Meydanı (İBB Canlı)", "İstanbul, Fatih", 41.0175, 28.9708, "https://kamerayayin.ibb.istanbul/turistikcam/eminonu.stream/playlist.m3u8"),
+        ("tr-ibb-misircarsisi", "Mısır Çarşısı (İBB Canlı)", "İstanbul, Fatih", 41.0165, 28.9705, "https://kamerayayin.ibb.istanbul/turistikcam/misircarsisi.stream/playlist.m3u8"),
+        ("tr-ibb-sultanahmet1", "Sultanahmet Meydanı 1 (İBB Canlı)", "İstanbul, Fatih", 41.0054, 28.9768, "https://kamerayayin.ibb.istanbul/turistikcam/sultanahmet1.stream/playlist.m3u8"),
+        ("tr-ibb-sultanahmet2", "Sultanahmet Meydanı 2 (İBB Canlı)", "İstanbul, Fatih", 41.0068, 28.9784, "https://kamerayayin.ibb.istanbul/turistikcam/sultanahmet2.stream/playlist.m3u8"),
+        ("tr-ibb-beyazit", "Beyazıt Meydanı (İBB Canlı)", "İstanbul, Fatih", 41.0103, 28.9640, "https://kamerayayin.ibb.istanbul/turistikcam/beyazitmeydan.stream/playlist.m3u8"),
+        ("tr-ibb-sarachane", "Saraçhane (İBB Canlı)", "İstanbul, Fatih", 41.0148, 28.9547, "https://kamerayayin.ibb.istanbul/turistikcam/sarachane.stream/playlist.m3u8"),
+        ("tr-ibb-kizkulesi", "Kız Kulesi (İBB Canlı)", "İstanbul, Üsküdar", 41.0211, 29.0041, "https://kamerayayin.ibb.istanbul/turistikcam/kizkulesi.stream/playlist.m3u8"),
+        ("tr-ibb-salacak", "Salacak Sahil (İBB Canlı)", "İstanbul, Üsküdar", 41.0226, 29.0086, "https://kamerayayin.ibb.istanbul/turistikcam/salacak.stream/playlist.m3u8"),
+        ("tr-ibb-anadoluhisari", "Anadolu Hisarı (İBB Canlı)", "İstanbul, Beykoz", 41.0825, 29.0667, "https://kamerayayin.ibb.istanbul/turistikcam/anadoluhisari.stream/playlist.m3u8"),
+        ("tr-ibb-emirgan", "Emirgan Korusu (İBB Canlı)", "İstanbul, Sarıyer", 41.1086, 29.0558, "https://kamerayayin.ibb.istanbul/turistikcam/emirgan.stream/playlist.m3u8"),
+        ("tr-ibb-buyukcamlica", "Büyük Çamlıca Tepesi (İBB Canlı)", "İstanbul, Üsküdar", 41.0277, 29.0684, "https://kamerayayin.ibb.istanbul/turistikcam/buyukcamlica.stream/playlist.m3u8"),
+        ("tr-ibb-dragos", "Dragos Sahil (İBB Canlı)", "İstanbul, Maltepe", 40.9125, 29.1394, "https://kamerayayin.ibb.istanbul/turistikcam/dragos.stream/playlist.m3u8"),
+        ("tr-ibb-kadikoy", "Kadıköy Rıhtım (İBB TKM)", "İstanbul, Kadıköy", 40.9927, 29.0230, "https://hls.ibb.gov.tr/tkm1/hls/201.stream/playlist.m3u8"),
+        ("tr-ibb-eminonu-sahil", "Eminönü Sahil (İBB TKM)", "İstanbul, Fatih", 41.0182, 28.9722, "https://601a43eea2819.streamlock.net/hls/181.stream/chunklist.m3u8"),
+        ("tr-ibb-bakirkoy", "Bakırköy Sahil Yolu (İBB TKM)", "İstanbul, Bakırköy", 40.9760, 28.8725, "https://601a43eea2819.streamlock.net/hls/22.stream/chunklist.m3u8"),
+    ]
+    .into_iter()
+    .map(|(id, name, city, lat, lon, url)| LiveCameraItem {
+        id: id.to_string(),
+        name: name.to_string(),
+        city: city.to_string(),
+        country_code: "TR".to_string(),
+        lat,
+        lon,
+        kind: "hls".to_string(),
+        embed_url: url.to_string(),
+        refresh_sec: None,
+    })
+    .collect();
 
     if let Ok(resp) = client
         .get("https://raw.githubusercontent.com/william-ricchiuti/Live-Environment-Streams/main/streams.geojson")

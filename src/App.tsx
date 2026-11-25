@@ -864,6 +864,7 @@ export function App() {
         radioPaused={radioPaused}
         onPlayRadio={handlePlayRadio}
         onShowOsmPois={setOsmPois}
+        onFlyTo={(lat, lon, zoom = 16) => setFlyTarget({ lat, lon, zoom, ts: Date.now() })}
         onOpenDiscovery={() => setDiscoveryOpen(true)}
         config={config}
         requestedTab={requestedTab}

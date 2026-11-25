@@ -68,6 +68,7 @@ interface RegionDrawerProps {
   radioPaused: boolean;
   onPlayRadio: (st: RadioStation) => void;
   onShowOsmPois: (pois: OsmPoi[]) => void;
+  onFlyTo?: (lat: number, lon: number, zoom?: number) => void;
   onOpenDiscovery: () => void;
   config: ApiKeysConfig;
   requestedTab?: { primary: DrawerPrimaryTab; mediaSub?: MediaSubTab; ts: number } | null;
@@ -87,6 +88,7 @@ export function RegionDrawer({
   radioPaused,
   onPlayRadio,
   onShowOsmPois,
+  onFlyTo,
   onOpenDiscovery,
   config,
   requestedTab,
@@ -809,10 +811,14 @@ export function RegionDrawer({
               <div className="text-xs font-semibold text-[#C4C9D4]">Tek Tıkla Yakın Çevre (Haritada Pinler)</div>
               <div className="flex flex-wrap gap-1.5">
                 {[
-                  { k: 'metro', label: 'Metro / Ray' },
+                  { k: 'cafe', label: 'Kafe' },
+                  { k: 'restaurant', label: 'Restoran' },
+                  { k: 'market', label: 'Market' },
                   { k: 'hospital', label: 'Hastane' },
                   { k: 'pharmacy', label: 'Eczane' },
+                  { k: 'metro', label: 'Metro / Ray' },
                   { k: 'park', label: 'Park / Toplanma' },
+                  { k: 'museum', label: 'Müze / Tarihi' },
                   { k: 'ev', label: 'EV Şarj' },
                 ].map((b) => (
                   <button
@@ -829,7 +835,7 @@ export function RegionDrawer({
                 ))}
               </div>
               {osmLoading && (
-                <div className="text-[11px] text-[#E5A952] animate-pulse">Overpass harita verisi çekiliyor...</div>
+                <div className="text-[11px] text-[#E5A952] animate-pulse">Yakın çevre noktaları aranıyor...</div>
               )}
               {!osmLoading && activePoiKind && (
                 <div className="flex items-center justify-between text-[11px] text-[#4ADE80]">
@@ -845,12 +851,16 @@ export function RegionDrawer({
                 </div>
               )}
               {osmPois.length > 0 && (
-                <div className="max-h-36 overflow-y-auto space-y-1 pt-1">
-                  {osmPois.slice(0, 12).map((p) => (
-                    <div key={p.id} className="px-2.5 py-1.5 rounded-lg bg-white/[0.03] flex items-center justify-between text-xs">
+                <div className="max-h-44 overflow-y-auto space-y-1 pt-1">
+                  {osmPois.slice(0, 18).map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => { sound.playClick(); onFlyTo?.(p.lat, p.lon, 16); }}
+                      className="w-full text-left px-2.5 py-1.5 rounded-lg bg-white/[0.03] hover:bg-white/[0.08] flex items-center justify-between text-xs transition cursor-pointer"
+                    >
                       <span className="truncate text-[#E6E8EC]">{p.name}</span>
                       <span className="text-[10px] text-[#8E95A3] shrink-0 ml-2">{p.extra || p.kind}</span>
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
