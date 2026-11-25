@@ -487,8 +487,8 @@ export function App() {
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-[#090B0E]">
-      {/* Global Persistent Radio Audio Element */}
-      <audio ref={audioRef} crossOrigin="anonymous" />
+      {/* Global Persistent Radio Audio Element (no crossOrigin so non-CORS FM streams play cleanly!) */}
+      <audio ref={audioRef} />
 
       {/* Full-Bleed 3D Interactive World Globe */}
       <GlobeMap

@@ -1133,21 +1133,40 @@ pub async fn fetch_tv_channels(country_code: &str) -> Vec<TvChannel> {
                     cur_name = l.rsplit(',').next().unwrap_or("TV Kanalı").trim().to_string();
                     cur_group = extract_attr(l, "group-title");
                     cur_logo = extract_attr(l, "tvg-logo");
-                } else if l.starts_with("http") && !cur_name.is_empty() {
-                    channels.push(TvChannel {
-                        name: cur_name.clone(),
-                        group: if cur_group.is_empty() { "Canlı TV".to_string() } else { cur_group.clone() },
-                        logo: cur_logo.clone(),
-                        stream_url: l.to_string(),
-                    });
-                    cur_name.clear();
-                    if channels.len() >= 35 {
-                        break;
+                } else if l.starts_with("https://") && !cur_name.is_empty() {
+                    let lower = cur_name.to_lowercase();
+                    if !lower.contains("not 24/7") && !lower.contains("geo-blocked") {
+                        channels.push(TvChannel {
+                            name: cur_name.clone(),
+                            group: if cur_group.is_empty() { "Canlı TV".to_string() } else { cur_group.clone() },
+                            logo: cur_logo.clone(),
+                            stream_url: l.to_string(),
+                        });
                     }
+                    cur_name.clear();
+                } else if l.starts_with("http://") {
+                    cur_name.clear();
                 }
             }
         }
     }
+
+    // Prioritize major reliable national channels at the top
+    let priority = [
+        "trt 1", "trt haber", "trt spor", "trt belgesel", "ntv", "cnn", "haberturk", "habertürk",
+        "halk tv", "sozcu", "sözcü", "now", "atv", "show", "star", "kanal d", "tv8",
+        "bloomberg", "a haber", "a spor", "24 tv", "tgrt", "tele1", "krt", "beyaz", "bbc", "nhk", "france 24", "al jazeera", "dw"
+    ];
+    channels.sort_by_key(|ch| {
+        let low = ch.name.to_lowercase();
+        for (idx, p) in priority.iter().enumerate() {
+            if low.contains(p) {
+                return idx;
+            }
+        }
+        999
+    });
+    channels.truncate(55);
     channels
 }
 
@@ -1164,27 +1183,79 @@ fn extract_attr(line: &str, key: &str) -> String {
 
 pub async fn fetch_news(query: &str) -> Vec<NewsItem> {
     let client = http_client();
-    let q = if query.trim().is_empty() { "Turkey" } else { query.trim() };
-    let url = format!(
-        "https://api.gdeltproject.org/api/v2/doc/doc?query={}&mode=ArtList&maxrecords=12&format=json&sort=DateDesc",
+    let q = if query.trim().is_empty() { "Türkiye" } else { query.trim() };
+    let mut list = Vec::new();
+
+    // 1. Primary: Google News RSS (instant local & district Turkish + Global news!)
+    let rss_url = format!(
+        "https://news.google.com/rss/search?q={}&hl=tr&gl=TR&ceid=TR:tr",
         url_encode(q)
     );
-    let mut list = Vec::new();
-    if let Ok(resp) = client.get(&url).send().await {
-        if let Ok(json) = resp.json::<serde_json::Value>().await {
-            if let Some(arts) = json["articles"].as_array() {
-                for a in arts {
+    if let Ok(resp) = client.get(&rss_url).send().await {
+        if let Ok(xml) = resp.text().await {
+            for item in xml.split("<item>").skip(1).take(12) {
+                let title = extract_xml_tag(item, "title");
+                let link = extract_xml_tag(item, "link");
+                let pub_date = extract_xml_tag(item, "pubDate");
+                let source = extract_xml_tag(item, "source");
+                if !title.is_empty() && !link.is_empty() {
                     list.push(NewsItem {
-                        title: a["title"].as_str().unwrap_or("").to_string(),
-                        url: a["url"].as_str().unwrap_or("").to_string(),
-                        domain: a["domain"].as_str().unwrap_or("").to_string(),
-                        seendate: a["seendate"].as_str().unwrap_or("").chars().take(15).collect(),
+                        title: html_unescape(&title),
+                        url: link,
+                        domain: if source.is_empty() { "Google Haberler".to_string() } else { html_unescape(&source) },
+                        seendate: pub_date.chars().take(16).collect(),
                     });
                 }
             }
         }
     }
+
+    // 2. Fallback: GDELT 2.0
+    if list.is_empty() {
+        let url = format!(
+            "https://api.gdeltproject.org/api/v2/doc/doc?query={}&mode=ArtList&maxrecords=10&format=json&sort=DateDesc",
+            url_encode(q)
+        );
+        if let Ok(resp) = client.get(&url).send().await {
+            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                if let Some(arts) = json["articles"].as_array() {
+                    for a in arts {
+                        list.push(NewsItem {
+                            title: a["title"].as_str().unwrap_or("").to_string(),
+                            url: a["url"].as_str().unwrap_or("").to_string(),
+                            domain: a["domain"].as_str().unwrap_or("").to_string(),
+                            seendate: a["seendate"].as_str().unwrap_or("").chars().take(15).collect(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
     list
+}
+
+fn extract_xml_tag(block: &str, tag: &str) -> String {
+    let open_prefix = format!("<{}", tag);
+    if let Some(start) = block.find(&open_prefix) {
+        let after_tag = &block[start + open_prefix.len()..];
+        if let Some(gt) = after_tag.find('>') {
+            let content = &after_tag[gt + 1..];
+            let close = format!("</{}>", tag);
+            if let Some(end) = content.find(&close) {
+                return content[..end].trim().to_string();
+            }
+        }
+    }
+    String::new()
+}
+
+fn html_unescape(s: &str) -> String {
+    s.replace("&amp;", "&")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
 }
 
 pub async fn fetch_outages(country_code: &str) -> Vec<OutageItem> {
@@ -1383,48 +1454,15 @@ pub async fn fetch_live_cameras() -> Vec<LiveCameraItem> {
         }
     }
 
-    let yt_channels = [
-        ("yt-iss-sen", "ISS 4K — Uzaydan Canlı Dünya (Sen)", "Yörünge (420 km)", "INT", 24.0, 22.0, "https://www.youtube.com/@Sen/live"),
-        ("yt-earthcam", "EarthCam — Canlı Dünya & New York", "New York", "US", 40.758, -73.9855, "https://www.youtube.com/@earthcam/live"),
-        ("yt-tokyo-ann", "Tokyo — Canlı Şehir & Haber Kamerası", "Tokyo", "JP", 35.6595, 139.7004, "https://www.youtube.com/@ANNnewsCH/live"),
-        ("yt-skyline", "SkylineWebcams — Canlı Şehir Akışı", "Avrupa", "IT", 45.4371, 12.3326, "https://www.youtube.com/@SkylineWebcams/live"),
-    ];
-    for (id, name, city, cc, lat, lon, live_url) in yt_channels {
-        if let Ok(resp) = client.get(live_url).send().await {
-            if let Ok(html) = resp.text().await {
-                if let Some(vid) = extract_youtube_video_id(&html) {
-                    cams.insert(
-                        0,
-                        LiveCameraItem {
-                            id: id.to_string(),
-                            name: name.to_string(),
-                            city: city.to_string(),
-                            country_code: cc.to_string(),
-                            lat,
-                            lon,
-                            kind: "youtube".to_string(),
-                            embed_url: format!("https://www.youtube-nocookie.com/embed/{}?autoplay=1&mute=1", vid),
-                            refresh_sec: None,
-                        },
-                    );
-                }
-            }
-        }
-    }
+    // Direct native HLS/MP4/Snapshot cameras only (no embed-blocked YouTube iframes!)
+    cams.sort_by_key(|c| match c.kind.as_str() {
+        "hls" => 0,
+        "mp4" => 1,
+        "snapshot" => 2,
+        _ => 3,
+    });
 
     cams
-}
-
-fn extract_youtube_video_id(html: &str) -> Option<String> {
-    let needle = "\"videoId\":\"";
-    if let Some(pos) = html.find(needle) {
-        let rest = &html[pos + needle.len()..];
-        let id: String = rest.chars().take(11).collect();
-        if id.len() == 11 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
-            return Some(id);
-        }
-    }
-    None
 }
 
 fn url_encode(s: &str) -> String {

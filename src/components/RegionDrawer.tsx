@@ -132,7 +132,7 @@ export function RegionDrawer({
       api.getInaturalist(place.lat, place.lon).catch(() => []),
       api.getRadios(place.country_code, place.city).catch(() => []),
       api.getTvChannels(place.country_code).catch(() => []),
-      api.getNews(place.city !== 'Bölge' ? place.city : place.country).catch(() => []),
+      api.getNews(`${place.city !== 'Bölge' ? place.city : ''} ${place.country}`).catch(() => []),
       api.getOutages(place.country_code).catch(() => []),
       isIstanbul ? api.getIstanbulData().catch(() => null) : Promise.resolve(null),
     ]).then(([fc, ctx, wk, wl, rad, tv, nw, outg, ist]) => {
@@ -223,6 +223,31 @@ export function RegionDrawer({
     setNewCamUrl('');
     setShowAddCam(false);
   };
+
+  const autoBrief = useMemo(() => {
+    if (!place) return '';
+    const parts: string[] = [];
+    if (forecast) {
+      parts.push(
+        `${place.city} şu an ${Math.round(forecast.temp_c)}°C (${weatherCodeText(forecast.weather_code)}), rüzgâr ${Math.round(forecast.wind_kmh)} km/s, hava kalitesi AQI ${forecast.us_aqi || '--'}.`
+      );
+      if (forecast.sea_temp_c !== null) {
+        parts.push(`Kıyı deniz suyu sıcaklığı ${forecast.sea_temp_c.toFixed(1)}°C, dalga yüksekliği ${(forecast.wave_height_m ?? 0).toFixed(1)} m.`);
+      }
+    }
+    if (nearbyEq.length > 0) {
+      parts.push(`Yakın çevrede son 24 saatte ${nearbyEq.length} sismik kayıt var (en büyüğü M${Math.max(...nearbyEq.map((e) => e.mag)).toFixed(1)}).`);
+    } else {
+      parts.push('Yakın çevrede güncel sismik aktivite sakin.');
+    }
+    if (countryCtx && countryCtx.ooni_alerts.length > 0) {
+      parts.push(`OONI ölçümlerinde ${countryCtx.ooni_alerts.length} erişim anomalisi kaydedildi.`);
+    }
+    if (news.length > 0) {
+      parts.push(`Öne çıkan başlık: "${news[0].title}".`);
+    }
+    return parts.join(' ');
+  }, [place, forecast, nearbyEq, countryCtx, news]);
 
   const runAiBrief = async () => {
     sound.playClick();
@@ -783,32 +808,30 @@ export function RegionDrawer({
           </div>
         )}
 
-        {/* TAB 4: NEWS & LOCAL OLLAMA AI */}
+        {/* TAB 4: NEWS & BUILT-IN / OLLAMA BRIEF */}
         {tab === 'news' && (
           <div className="space-y-4">
-            <div className="rounded-xl bg-white/[0.03] p-3 space-y-2.5">
+            <div className="rounded-xl bg-white/[0.03] p-3.5 space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-[#E6E8EC] flex items-center gap-1.5">
-                  <Cpu className="w-3.5 h-3.5 text-[#E5A952]" /> Lokal Ollama Durum Özeti
+                <span className="text-xs font-semibold text-[#E5A952] flex items-center gap-1.5">
+                  <Cpu className="w-3.5 h-3.5" /> Anlık Bölge Durum Özeti
                 </span>
-                <span className="font-mono-tech text-[10px] text-[#8E95A3]">{config.ollamaModel}</span>
+                <button
+                  onClick={runAiBrief}
+                  disabled={briefLoading}
+                  className="px-2 py-0.5 rounded-md bg-white/[0.06] hover:bg-white/[0.12] text-[10px] text-[#C4C9D4] cursor-pointer"
+                  title="Lokal Ollama çalışıyorsa AI ile genişletir"
+                >
+                  {briefLoading ? 'Ollama...' : 'Ollama ile Derinleştir'}
+                </button>
               </div>
-              <button
-                onClick={runAiBrief}
-                disabled={briefLoading}
-                className="w-full atlas-btn atlas-btn-amber py-2"
-              >
-                {briefLoading ? 'Analiz ediliyor...' : 'Bölge Brifingi Üret'}
-              </button>
-              {brief && (
-                <div className="text-xs leading-relaxed text-[#E6E8EC] whitespace-pre-wrap pt-1">
-                  {brief}
-                </div>
-              )}
+              <div className="text-xs leading-relaxed text-[#E6E8EC]">
+                {brief || autoBrief || 'Bölge özeti hazırlanıyor...'}
+              </div>
             </div>
 
             <div className="space-y-1.5">
-              <div className="text-xs font-semibold text-[#8E95A3]">GDELT Güncel Haberler</div>
+              <div className="text-xs font-semibold text-[#8E95A3]">Bölge Haberleri ({news.length})</div>
               {news.map((n, i) => (
                 <a
                   key={i}
@@ -824,6 +847,9 @@ export function RegionDrawer({
                   </div>
                 </a>
               ))}
+              {!loading && news.length === 0 && (
+                <div className="text-xs text-[#5C6372] py-4 text-center">Bu bölge için güncel haber bulunamadı.</div>
+              )}
             </div>
           </div>
         )}
