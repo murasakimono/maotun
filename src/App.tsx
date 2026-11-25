@@ -12,6 +12,7 @@ import {
 import type {
   AlertRule,
   ApiKeysConfig,
+  CyberThreat,
   DisasterItem,
   DiscoveryPin,
   EarthquakeItem,
@@ -49,6 +50,8 @@ import { DiscoveryModal } from './components/DiscoveryModal';
 import { CompareModal } from './components/CompareModal';
 import { TurkeyFogModal } from './components/TurkeyFogModal';
 import { AirportModal } from './components/AirportModal';
+import { SignalHuntModal } from './components/SignalHuntModal';
+import { HistoryModal } from './components/HistoryModal';
 import { MultiCamWall } from './components/MultiCamWall';
 import { AlertModal } from './components/AlertModal';
 import { CommandPalette, type PaletteAction } from './components/CommandPalette';
@@ -86,6 +89,7 @@ export function App() {
   const [rockets, setRockets] = useState<RocketLaunch[]>([]);
   const [fireballs, setFireballs] = useState<FireballItem[]>([]);
   const [torRelays, setTorRelays] = useState<TorRelay[]>([]);
+  const [cyberThreats, setCyberThreats] = useState<CyberThreat[]>([]);
   const [kiwisdr, setKiwisdr] = useState<KiwiSdrNode[]>([]);
   const [rainMeta, setRainMeta] = useState<RainViewerMeta | null>(null);
   const [radarIdx, setRadarIdx] = useState(0);
@@ -100,6 +104,8 @@ export function App() {
   const [selectedAirport, setSelectedAirport] = useState<MajorAirport | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
   const [turkeyFogOpen, setTurkeyFogOpen] = useState(false);
+  const [signalHuntOpen, setSignalHuntOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const [visitedPlakas, setVisitedPlakas] = useState<string[]>(() => {
     try {
@@ -192,6 +198,7 @@ export function App() {
     nasaGibs: false,
     discoveries: true,
     turkeyFog: false,
+    cyberThreats: false,
   });
 
   // Persistent Background Radio Player (keeps playing when drawer closes!)
@@ -247,7 +254,7 @@ export function App() {
   const refreshAll = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [eq, dis, flt, mil, tles, sdr, rv, sw, shp, liveCams, rck, fb, tor, wtg] = await Promise.all([
+      const [eq, dis, flt, mil, tles, sdr, rv, sw, shp, liveCams, rck, fb, tor, wtg, cyb] = await Promise.all([
         api.getEarthquakes().catch(() => []),
         api.getDisasters().catch(() => []),
         api.getFlights(39.0, 34.0, 250).catch(() => []),
@@ -262,8 +269,10 @@ export function App() {
         api.getFireballs().catch(() => []),
         api.getTorRelays().catch(() => []),
         api.getWindTempGrid().catch(() => []),
+        api.getCyberThreats().catch(() => []),
       ]);
       setWindTempGrid(wtg);
+      setCyberThreats(cyb);
       setEarthquakes(eq);
       setDisasters(dis);
       setFlights(flt);
@@ -546,6 +555,7 @@ export function App() {
         rockets={rockets}
         fireballs={fireballs}
         torRelays={torRelays}
+        cyberThreats={cyberThreats}
         kiwisdr={kiwisdr}
         auroraPoints={spaceWeather?.aurora_points ?? []}
         ships={ships}
@@ -751,6 +761,7 @@ export function App() {
           fireballs: fireballs.length,
           kiwisdr: kiwisdr.length,
           tor: torRelays.length,
+          cyber: cyberThreats.length,
           ships: ships.length,
           fires: fires.length,
           cams: cameras.length,
@@ -791,6 +802,8 @@ export function App() {
         onOpenTv={() => openDrawerTo('media', 'tv')}
         onOpenDiscovery={() => setDiscoveryOpen(true)}
         onOpenTurkeyFog={() => setTurkeyFogOpen(true)}
+        onOpenSignalHunt={() => setSignalHuntOpen(true)}
+        onOpenHistory={() => setHistoryOpen(true)}
         onOpenCompare={() => setCompareOpen(true)}
         onOpenAlerts={() => setAlertsOpen(true)}
         onOpenPalette={() => setPaletteOpen(true)}
@@ -849,6 +862,8 @@ export function App() {
         onFlyTo={(lat, lon, zoom) => setFlyTarget({ lat, lon, zoom, ts: Date.now() })}
       />
       <AirportModal airport={selectedAirport} onClose={() => setSelectedAirport(null)} />
+      <SignalHuntModal open={signalHuntOpen} onClose={() => setSignalHuntOpen(false)} cameras={cameras} />
+      <HistoryModal open={historyOpen} onClose={() => setHistoryOpen(false)} />
       <MultiCamWall open={wallOpen} onClose={() => setWallOpen(false)} cameras={cameras} />
       <AlertModal
         open={alertsOpen}

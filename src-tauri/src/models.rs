@@ -308,3 +308,30 @@ pub struct WindTempPoint {
     pub wind_kmh: f64,
     pub wind_dir: f64,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CyberThreat {
+    pub ip: String,
+    pub malware: String,
+    pub port: i64,
+    pub country: String,
+    pub lat: f64,
+    pub lon: f64,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HistoryEvent {
+    pub year: i64,
+    pub text: String,
+    pub title: String,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MediaWork {
+    pub title: String,
+    pub kind: String,
+    pub year: String,
+    pub url: String,
+}

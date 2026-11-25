@@ -4,8 +4,10 @@ import {
   Bell,
   Bookmark,
   Camera,
+  Clock,
   Command,
   Compass,
+  Crosshair,
   Flame,
   Globe,
   Grid2x2,
@@ -39,6 +41,7 @@ interface FloatingDockProps {
     fireballs: number;
     kiwisdr: number;
     tor: number;
+    cyber: number;
     ships: number;
     fires: number;
     cams: number;
@@ -61,6 +64,8 @@ interface FloatingDockProps {
   onOpenTv: () => void;
   onOpenDiscovery: () => void;
   onOpenTurkeyFog: () => void;
+  onOpenSignalHunt: () => void;
+  onOpenHistory: () => void;
   onOpenCompare: () => void;
   onOpenAlerts: () => void;
   onOpenPalette: () => void;
@@ -87,6 +92,8 @@ export function FloatingDock({
   onOpenTv,
   onOpenDiscovery,
   onOpenTurkeyFog,
+  onOpenSignalHunt,
+  onOpenHistory,
   onOpenCompare,
   onOpenAlerts,
   onOpenPalette,
@@ -200,6 +207,7 @@ export function FloatingDock({
               <ToggleRow layerKey="cables" label="Denizaltı Fiber Optik Kablolar" dot="#60A5FA" />
               <ToggleRow layerKey="kiwisdr" label="KiwiSDR Kısa Dalga Alıcıları" count={counts.kiwisdr} dot="#C084FC" />
               <ToggleRow layerKey="tor" label="Tor Onionoo Canlı Ağ Düğümleri" count={counts.tor} dot="#A855F7" />
+              <ToggleRow layerKey="cyberThreats" label="Canlı Siber Tehdit & Botnet C2" sub="Abuse.ch Feodo Tracker" count={counts.cyber} dot="#FF2A55" />
               <ToggleRow layerKey="ships" label="Canlı AIS Deniz Trafiği" count={counts.ships} dot="#38BDF8" />
               <div className="h-px bg-white/10 my-1" />
               <ToggleRow layerKey="terminator" label="Gerçek Zamanlı Gece / Gündüz Çizgisi" dot="#E5A952" />
@@ -279,6 +287,12 @@ export function FloatingDock({
                   <Map className="w-3.5 h-3.5 text-[#E5A952]" /> 81 İl ({counts.visitedCount}/81)
                 </button>
               </div>
+              <button
+                onClick={() => { setOpenGroup(null); onOpenSignalHunt(); }}
+                className="w-full atlas-btn py-2 bg-[#4ADE80]/15 text-[#4ADE80] hover:bg-[#4ADE80]/25 text-xs"
+              >
+                <Crosshair className="w-3.5 h-3.5" /> Sinyal Avı — Canlı Kamera GeoGuessr Oyna
+              </button>
             </div>
           )}
 
@@ -291,8 +305,15 @@ export function FloatingDock({
                 onClick={() => { setOpenGroup(null); onOpenCompare(); }}
                 className="w-full atlas-btn justify-between px-3 py-2 bg-white/[0.04]"
               >
-                <span className="flex items-center gap-2"><ArrowLeftRight className="w-4 h-4 text-[#E5A952]" /> Canlı Bölge Karşılaştır</span>
+                <span className="flex items-center gap-2"><ArrowLeftRight className="w-4 h-4 text-[#E5A952]" /> Canlı Bölge & Maliyet Karşılaştır</span>
                 <span className="text-[10px] text-[#8E95A3]">2 Şehir</span>
+              </button>
+              <button
+                onClick={() => { setOpenGroup(null); onOpenHistory(); }}
+                className="w-full atlas-btn justify-between px-3 py-2 bg-white/[0.04]"
+              >
+                <span className="flex items-center gap-2"><Clock className="w-4 h-4 text-[#60A5FA]" /> Tarihsel Zaman Makinesi</span>
+                <span className="text-[10px] text-[#8E95A3]">Bugün</span>
               </button>
               <button
                 onClick={() => { sound.playToggle(!measureMode); onToggleMeasure(); setOpenGroup(null); }}

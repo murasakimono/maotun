@@ -341,6 +341,31 @@ export interface LayerState {
   nasaGibs: boolean;
   discoveries: boolean;
   turkeyFog: boolean;
+  cyberThreats: boolean;
+}
+
+export interface CyberThreat {
+  ip: string;
+  malware: string;
+  port: number;
+  country: string;
+  lat: number;
+  lon: number;
+  status: string;
+}
+
+export interface HistoryEvent {
+  year: number;
+  text: string;
+  title: string;
+  url: string;
+}
+
+export interface MediaWork {
+  title: string;
+  kind: string;
+  year: string;
+  url: string;
 }
 
 export interface WindTempPoint {

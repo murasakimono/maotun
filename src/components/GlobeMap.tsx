@@ -3,6 +3,7 @@ import maplibregl from 'maplibre-gl';
 import { Compass, Minus, Mountain, Plus } from 'lucide-react';
 import type {
   AuroraPoint,
+  CyberThreat,
   DisasterItem,
   DiscoveryPin,
   EarthquakeItem,
@@ -44,6 +45,7 @@ interface GlobeMapProps {
   rockets: RocketLaunch[];
   fireballs: FireballItem[];
   torRelays: TorRelay[];
+  cyberThreats: CyberThreat[];
   kiwisdr: KiwiSdrNode[];
   auroraPoints: AuroraPoint[];
   ships: ShipItem[];
@@ -109,6 +111,7 @@ export function GlobeMap({
   rockets,
   fireballs,
   torRelays,
+  cyberThreats,
   kiwisdr,
   auroraPoints,
   ships,
@@ -353,6 +356,7 @@ export function GlobeMap({
       addPointLayer('fires', '#EF4444', 3.4);
       addPointLayer('ships', '#38BDF8', 3.2);
       addPointLayer('tor', '#A855F7', 3.6);
+      addPointLayer('cyber', '#FF2A55', 5.0, '#FFFFFF');
       addPointLayer('kiwisdr', '#C084FC', 4.0);
       addPointLayer(
         'satellites',
@@ -428,6 +432,7 @@ export function GlobeMap({
       'flights-pt',
       'kiwisdr-pt',
       'tor-pt',
+      'cyber-pt',
       'osm-pois-pt',
       'disasters-pt',
       'cables-line',
@@ -494,6 +499,17 @@ export function GlobeMap({
               `<div style="color:${p.category === 'MIL' ? '#E5A952' : '#60A5FA'};font-weight:600">${p.category} • ${p.callsign || p.hex}</div>
                <div style="font-size:11px">${p.aircraft_type} • Squawk ${p.squawk}</div>
                <div style="font-size:11px;color:#8E95A3">${p.alt_ft} ft • ${Number(p.speed_kt).toFixed(0)} kt • HDG ${Number(p.heading).toFixed(0)}°</div>`
+            )
+            .addTo(map);
+          return;
+        }
+        if (f.layer.id === 'cyber-pt') {
+          new maplibregl.Popup({ closeOnClick: true })
+            .setLngLat(e.lngLat)
+            .setHTML(
+              `<div style="color:#FF2A55;font-weight:600">Siber Tehdit C2 • ${p.malware}</div>
+               <div style="font-size:11px">IP: ${p.ip}:${p.port} (${p.country})</div>
+               <div style="font-size:11px;color:#8E95A3">Durum: ${p.status} • Kaynak: Abuse.ch Feodo</div>`
             )
             .addTo(map);
           return;
@@ -714,6 +730,7 @@ export function GlobeMap({
     setData('rockets', pts(rockets));
     setData('fireballs', pts(fireballs));
     setData('tor', pts(torRelays));
+    setData('cyber', pts(cyberThreats));
     setData('kiwisdr', pts(kiwisdr));
     setData('aurora', pts(auroraPoints));
     setData('ships', pts(ships));
@@ -745,6 +762,7 @@ export function GlobeMap({
     setVis('rockets-pt', layers.rockets);
     setVis('fireballs-pt', layers.fireballs);
     setVis('tor-pt', layers.tor);
+    setVis('cyber-pt', layers.cyberThreats);
     setVis('kiwisdr-pt', layers.kiwisdr);
     setVis('aurora-glow', layers.aurora);
     setVis('cables-line', layers.cables);
@@ -770,6 +788,7 @@ export function GlobeMap({
     rockets,
     fireballs,
     torRelays,
+    cyberThreats,
     kiwisdr,
     auroraPoints,
     ships,

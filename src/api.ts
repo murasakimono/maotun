@@ -1,14 +1,17 @@
 import { invoke } from '@tauri-apps/api/core';
 import type {
   CountryContext,
+  CyberThreat,
   DisasterItem,
   EarthquakeItem,
   FireballItem,
   FireHotspot,
   FlightItem,
+  HistoryEvent,
   IstanbulData,
   KiwiSdrNode,
   LiveCamera,
+  MediaWork,
   NewsItem,
   OsmPoi,
   OutageItem,
@@ -30,6 +33,9 @@ import type {
 export const api = {
   getProxyPort: () => invoke<number>('get_proxy_port'),
   getWindTempGrid: () => invoke<WindTempPoint[]>('get_wind_temp_grid'),
+  getCyberThreats: () => invoke<CyberThreat[]>('get_cyber_threats'),
+  getOnThisDay: () => invoke<HistoryEvent[]>('get_on_this_day'),
+  getCityMediaWorks: (city: string) => invoke<MediaWork[]>('get_city_media_works', { city }),
   getEarthquakes: () => invoke<EarthquakeItem[]>('get_earthquakes'),
   getDisasters: () => invoke<DisasterItem[]>('get_disasters'),
   getFlights: (lat: number, lon: number, radiusNm = 200) =>

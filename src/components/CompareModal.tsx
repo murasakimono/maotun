@@ -3,6 +3,7 @@ import { ArrowLeftRight, Droplets, Wind, X } from 'lucide-react';
 import type { CountryContext, NewsItem, RichForecast } from '../types';
 import { api } from '../api';
 import { QUICK_CITIES } from '../cameras';
+import { COST_OF_LIVING } from '../data/worldCulture';
 import { weatherCodeText } from '../geo';
 import { sound } from '../sound';
 
@@ -113,6 +114,23 @@ export function CompareModal({ open, onClose }: CompareModalProps) {
               ))}
             </div>
           </>
+        )}
+
+        {COST_OF_LIVING[c.name] && (
+          <div className="pt-2 border-t border-white/[0.07] space-y-1.5 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-[#E5A952]">Yaşam Maliyeti & Alım Gücü</span>
+              <span className="font-mono-tech text-[10px] text-[#8E95A3]">
+                Endeks {COST_OF_LIVING[c.name].index}/100
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 font-mono-tech text-[11px]">
+              <div className="rounded bg-white/[0.03] px-2 py-1">1+1 Kira: ${COST_OF_LIVING[c.name].rent1bUsd}</div>
+              <div className="rounded bg-white/[0.03] px-2 py-1">Yemek: ${COST_OF_LIVING[c.name].mealUsd}</div>
+              <div className="rounded bg-white/[0.03] px-2 py-1">Kahve: ${COST_OF_LIVING[c.name].coffeeUsd}</div>
+              <div className="rounded bg-white/[0.03] px-2 py-1">Ulaşım: ${COST_OF_LIVING[c.name].transitUsd}</div>
+            </div>
+          </div>
         )}
 
         {data.ctx && (

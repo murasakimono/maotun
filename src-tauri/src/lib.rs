@@ -15,6 +15,21 @@ async fn get_wind_temp_grid() -> Vec<WindTempPoint> {
 }
 
 #[tauri::command]
+async fn get_cyber_threats() -> Vec<CyberThreat> {
+    feeds::fetch_cyber_threats().await
+}
+
+#[tauri::command]
+async fn get_on_this_day() -> Vec<HistoryEvent> {
+    feeds::fetch_on_this_day().await
+}
+
+#[tauri::command]
+async fn get_city_media_works(city: String) -> Vec<MediaWork> {
+    feeds::fetch_city_media_works(&city).await
+}
+
+#[tauri::command]
 async fn get_earthquakes() -> Vec<EarthquakeItem> {
     feeds::fetch_earthquakes().await
 }
@@ -164,6 +179,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_proxy_port,
             get_wind_temp_grid,
+            get_cyber_threats,
+            get_on_this_day,
+            get_city_media_works,
             get_earthquakes,
             get_disasters,
             get_flights,

@@ -1509,6 +1509,138 @@ pub async fn fetch_wind_temp_grid() -> Vec<WindTempPoint> {
     out
 }
 
+pub async fn fetch_cyber_threats() -> Vec<CyberThreat> {
+    let client = http_client();
+    let mut out = Vec::new();
+    // Abuse.ch Feodo Tracker live botnet C2 JSON (zero API key)
+    if let Ok(resp) = client
+        .get("https://feodotracker.abuse.ch/downloads/ipblocklist_recommended.json")
+        .send()
+        .await
+    {
+        if let Ok(arr) = resp.json::<Vec<serde_json::Value>>().await {
+            for (idx, item) in arr.iter().take(65).enumerate() {
+                let cc = item["country"].as_str().unwrap_or("US").to_uppercase();
+                let (base_lat, base_lon) = country_centroid(&cc);
+                // Deterministic slight jitter so nodes in same country spread cleanly on the globe
+                let jlat = ((idx * 37) % 100) as f64 / 50.0 - 1.0;
+                let jlon = ((idx * 53) % 100) as f64 / 40.0 - 1.25;
+                out.push(CyberThreat {
+                    ip: item["ip_address"].as_str().unwrap_or("0.0.0.0").to_string(),
+                    malware: item["malware"].as_str().unwrap_or("Botnet C2").to_string(),
+                    port: item["port"].as_i64().unwrap_or(443),
+                    country: cc,
+                    lat: base_lat + jlat,
+                    lon: base_lon + jlon,
+                    status: item["status"].as_str().unwrap_or("online").to_string(),
+                });
+            }
+        }
+    }
+    out
+}
+
+fn country_centroid(cc: &str) -> (f64, f64) {
+    match cc {
+        "US" => (39.5, -98.3), "DE" => (51.1, 10.4), "NL" => (52.1, 5.3),
+        "RU" => (55.7, 37.6), "CN" => (35.8, 104.1), "GB" => (54.0, -2.0),
+        "FR" => (46.2, 2.2), "BR" => (-14.2, -51.9), "IN" => (20.6, 78.9),
+        "JP" => (36.2, 138.2), "KR" => (35.9, 127.7), "SG" => (1.35, 103.8),
+        "TR" => (39.0, 35.2), "CA" => (56.1, -106.3), "AU" => (-25.2, 133.7),
+        "UA" => (48.4, 31.1), "PL" => (51.9, 19.1), "IT" => (41.8, 12.5),
+        "ES" => (40.4, -3.7), "HK" => (22.3, 114.1), "VN" => (14.0, 108.2),
+        "ID" => (-0.8, 113.9), "MX" => (23.6, -102.5), "ZA" => (-30.5, 22.9),
+        _ => (25.0, 15.0),
+    }
+}
+
+pub async fn fetch_on_this_day() -> Vec<HistoryEvent> {
+    let client = http_client();
+    // Compute current UTC month/day from UNIX epoch cleanly
+    let secs = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
+    let days = (secs / 86400) as i64;
+    let (_, month, day) = civil_from_days(days);
+    let url = format!(
+        "https://api.wikimedia.org/feed/v1/wikipedia/tr/onthisday/events/{:02}/{:02}",
+        month, day
+    );
+    let mut out = Vec::new();
+    if let Ok(resp) = client.get(&url).send().await {
+        if let Ok(j) = resp.json::<serde_json::Value>().await {
+            if let Some(arr) = j["events"].as_array() {
+                for ev in arr.iter().take(18) {
+                    let year = ev["year"].as_i64().unwrap_or(0);
+                    let text = ev["text"].as_str().unwrap_or("").to_string();
+                    let page = &ev["pages"][0];
+                    let title = page["titles"]["normalized"].as_str().unwrap_or("Tarih").to_string();
+                    let link = page["content_urls"]["desktop"]["page"].as_str().unwrap_or("").to_string();
+                    if !text.is_empty() {
+                        out.push(HistoryEvent { year, text, title, url: link });
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = (z - era * 146097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = (yoe as i64) + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y, m as u32, d as u32)
+}
+
+pub async fn fetch_city_media_works(city: &str) -> Vec<MediaWork> {
+    let client = http_client();
+    let clean = city.replace('"', "").replace('\\', "");
+    if clean.trim().len() < 2 {
+        return Vec::new();
+    }
+    // Live Wikidata SPARQL query for films / games / series set in this city
+    let sparql = format!(
+        "SELECT DISTINCT ?item ?itemLabel ?year WHERE {{ ?city rdfs:label \"{}\"@en . ?item wdt:P840 ?city . OPTIONAL {{ ?item wdt:P577 ?date . BIND(YEAR(?date) AS ?year) }} SERVICE wikibase:label {{ bd:serviceParam wikibase:language \"tr,en\". }} }} LIMIT 8",
+        clean.trim()
+    );
+    let url = format!(
+        "https://query.wikidata.org/sparql?format=json&query={}",
+        url_encode(&sparql)
+    );
+    let mut out = Vec::new();
+    if let Ok(resp) = client
+        .get(&url)
+        .header("Accept", "application/sparql-results+json")
+        .send()
+        .await
+    {
+        if let Ok(j) = resp.json::<serde_json::Value>().await {
+            if let Some(arr) = j["results"]["bindings"].as_array() {
+                for b in arr {
+                    let title = b["itemLabel"]["value"].as_str().unwrap_or("").to_string();
+                    let link = b["item"]["value"].as_str().unwrap_or("").to_string();
+                    let year = b["year"]["value"].as_str().unwrap_or("").to_string();
+                    if !title.is_empty() && !title.starts_with('Q') {
+                        out.push(MediaWork {
+                            title,
+                            kind: "Wikidata Yapım".to_string(),
+                            year,
+                            url: link,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
 fn url_encode(s: &str) -> String {
     s.bytes()
         .map(|b| match b {
