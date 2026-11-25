@@ -595,7 +595,8 @@ pub async fn fetch_ships() -> Vec<ShipItem> {
     if let Ok(resp) = client
         .get("https://meri.digitraffic.fi/api/ais/v1/locations")
         .header("Accept", "application/json")
-        .header("Digitraffic-User", "MAOTUN/3.0")
+        .header("Accept-Encoding", "gzip")
+        .header("Digitraffic-User", "MAOTUN/5.2")
         .send()
         .await
     {
@@ -658,30 +659,38 @@ pub async fn fetch_firms_fires(map_key: &str) -> Vec<FireHotspot> {
 pub async fn fetch_rockets() -> Vec<RocketLaunch> {
     let client = http_client();
     let mut out = Vec::new();
-    if let Ok(resp) = client
-        .get("https://ll.thespacedevs.com/2.3.0/launches/upcoming/?limit=14")
-        .send()
-        .await
-    {
-        if let Ok(j) = resp.json::<serde_json::Value>().await {
-            if let Some(arr) = j["results"].as_array() {
-                for item in arr {
-                    let pad = &item["pad"];
-                    let lat = pad["latitude"].as_f64().or_else(|| pad["latitude"].as_str().and_then(|s| s.parse().ok())).unwrap_or(0.0);
-                    let lon = pad["longitude"].as_f64().or_else(|| pad["longitude"].as_str().and_then(|s| s.parse().ok())).unwrap_or(0.0);
-                    if lat == 0.0 && lon == 0.0 {
-                        continue;
+    let urls = [
+        "https://ll.thespacedevs.com/2.3.0/launches/upcoming/?limit=14",
+        "https://lldev.thespacedevs.com/2.3.0/launches/upcoming/?limit=14",
+    ];
+    for url in urls {
+        if let Ok(resp) = client.get(url).send().await {
+            if !resp.status().is_success() {
+                continue;
+            }
+            if let Ok(j) = resp.json::<serde_json::Value>().await {
+                if let Some(arr) = j["results"].as_array() {
+                    for item in arr {
+                        let pad = &item["pad"];
+                        let lat = pad["latitude"].as_f64().or_else(|| pad["latitude"].as_str().and_then(|s| s.parse().ok())).unwrap_or(0.0);
+                        let lon = pad["longitude"].as_f64().or_else(|| pad["longitude"].as_str().and_then(|s| s.parse().ok())).unwrap_or(0.0);
+                        if lat == 0.0 && lon == 0.0 {
+                            continue;
+                        }
+                        out.push(RocketLaunch {
+                            id: item["id"].as_str().unwrap_or("").to_string(),
+                            name: item["name"].as_str().unwrap_or("Roket Fırlatma").to_string(),
+                            provider: item["launch_service_provider"]["name"].as_str().unwrap_or("Space Agency").to_string(),
+                            pad_name: pad["name"].as_str().unwrap_or("Fırlatma Rampası").to_string(),
+                            lat,
+                            lon,
+                            net: item["net"].as_str().unwrap_or("").to_string(),
+                            status: item["status"]["abbrev"].as_str().unwrap_or("TBD").to_string(),
+                        });
                     }
-                    out.push(RocketLaunch {
-                        id: item["id"].as_str().unwrap_or("").to_string(),
-                        name: item["name"].as_str().unwrap_or("Roket Fırlatma").to_string(),
-                        provider: item["launch_service_provider"]["name"].as_str().unwrap_or("Space Agency").to_string(),
-                        pad_name: pad["name"].as_str().unwrap_or("Fırlatma Rampası").to_string(),
-                        lat,
-                        lon,
-                        net: item["net"].as_str().unwrap_or("").to_string(),
-                        status: item["status"]["abbrev"].as_str().unwrap_or("TBD").to_string(),
-                    });
+                    if !out.is_empty() {
+                        break;
+                    }
                 }
             }
         }
@@ -853,41 +862,53 @@ pub async fn fetch_osm_nearby(lat: f64, lon: f64, kind: &str) -> Vec<OsmPoi> {
     };
 
     let mut out = Vec::new();
-    if let Ok(resp) = client
-        .post("https://overpass-api.de/api/interpreter")
-        .body(format!("data={}", url_encode(&query)))
-        .header("Content-Type", "application/x-www-form-urlencoded")
-        .send()
-        .await
-    {
-        if let Ok(j) = resp.json::<serde_json::Value>().await {
-            if let Some(els) = j["elements"].as_array() {
-                for el in els {
-                    let tags = &el["tags"];
-                    let name = tags["name"].as_str().unwrap_or("").trim().to_string();
-                    if name.is_empty() && kind != "ev" {
-                        continue;
+    let mirrors = [
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+    ];
+    for mirror in mirrors {
+        if let Ok(resp) = client
+            .post(mirror)
+            .body(format!("data={}", url_encode(&query)))
+            .header("Content-Type", "application/x-www-form-urlencoded")
+            .send()
+            .await
+        {
+            if !resp.status().is_success() {
+                continue;
+            }
+            if let Ok(j) = resp.json::<serde_json::Value>().await {
+                if let Some(els) = j["elements"].as_array() {
+                    for el in els {
+                        let tags = &el["tags"];
+                        let name = tags["name"].as_str().unwrap_or("").trim().to_string();
+                        if name.is_empty() && kind != "ev" {
+                            continue;
+                        }
+                        let elat = el["lat"].as_f64().or_else(|| el["center"]["lat"].as_f64()).unwrap_or(0.0);
+                        let elon = el["lon"].as_f64().or_else(|| el["center"]["lon"].as_f64()).unwrap_or(0.0);
+                        if elat == 0.0 && elon == 0.0 {
+                            continue;
+                        }
+                        let extra = tags["operator"]
+                            .as_str()
+                            .or_else(|| tags["historic"].as_str())
+                            .or_else(|| tags["tourism"].as_str())
+                            .or_else(|| tags["addr:street"].as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        out.push(OsmPoi {
+                            id: el["id"].as_i64().unwrap_or(0),
+                            name: if name.is_empty() { "EV Şarj İstasyonu".to_string() } else { name },
+                            kind: kind.to_string(),
+                            lat: elat,
+                            lon: elon,
+                            extra,
+                        });
                     }
-                    let elat = el["lat"].as_f64().or_else(|| el["center"]["lat"].as_f64()).unwrap_or(0.0);
-                    let elon = el["lon"].as_f64().or_else(|| el["center"]["lon"].as_f64()).unwrap_or(0.0);
-                    if elat == 0.0 && elon == 0.0 {
-                        continue;
+                    if !out.is_empty() {
+                        break;
                     }
-                    let extra = tags["operator"]
-                        .as_str()
-                        .or_else(|| tags["historic"].as_str())
-                        .or_else(|| tags["tourism"].as_str())
-                        .or_else(|| tags["addr:street"].as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    out.push(OsmPoi {
-                        id: el["id"].as_i64().unwrap_or(0),
-                        name: if name.is_empty() { "EV Şarj İstasyonu".to_string() } else { name },
-                        kind: kind.to_string(),
-                        lat: elat,
-                        lon: elon,
-                        extra,
-                    });
                 }
             }
         }
@@ -1184,29 +1205,35 @@ fn extract_attr(line: &str, key: &str) -> String {
 pub async fn fetch_news(query: &str) -> Vec<NewsItem> {
     let client = http_client();
     let q = if query.trim().is_empty() { "Türkiye" } else { query.trim() };
+    let fallback_q = q.split_whitespace().last().unwrap_or("Türkiye");
     let mut list = Vec::new();
 
-    // 1. Primary: Google News RSS (instant local & district Turkish + Global news!)
-    let rss_url = format!(
-        "https://news.google.com/rss/search?q={}&hl=tr&gl=TR&ceid=TR:tr",
-        url_encode(q)
-    );
-    if let Ok(resp) = client.get(&rss_url).send().await {
-        if let Ok(xml) = resp.text().await {
-            for item in xml.split("<item>").skip(1).take(12) {
-                let title = extract_xml_tag(item, "title");
-                let link = extract_xml_tag(item, "link");
-                let pub_date = extract_xml_tag(item, "pubDate");
-                let source = extract_xml_tag(item, "source");
-                if !title.is_empty() && !link.is_empty() {
-                    list.push(NewsItem {
-                        title: html_unescape(&title),
-                        url: link,
-                        domain: if source.is_empty() { "Google Haberler".to_string() } else { html_unescape(&source) },
-                        seendate: pub_date.chars().take(16).collect(),
-                    });
+    // Try exact query first, then broader country/province fallback so news is NEVER 0!
+    for candidate in [q, fallback_q, "Türkiye"] {
+        let rss_url = format!(
+            "https://news.google.com/rss/search?q={}&hl=tr&gl=TR&ceid=TR:tr",
+            url_encode(candidate)
+        );
+        if let Ok(resp) = client.get(&rss_url).send().await {
+            if let Ok(xml) = resp.text().await {
+                for item in xml.split("<item>").skip(1).take(12) {
+                    let title = extract_xml_tag(item, "title");
+                    let link = extract_xml_tag(item, "link");
+                    let pub_date = extract_xml_tag(item, "pubDate");
+                    let source = extract_xml_tag(item, "source");
+                    if !title.is_empty() && !link.is_empty() {
+                        list.push(NewsItem {
+                            title: html_unescape(&title),
+                            url: link,
+                            domain: if source.is_empty() { "Google Haberler".to_string() } else { html_unescape(&source) },
+                            seendate: pub_date.chars().take(16).collect(),
+                        });
+                    }
                 }
             }
+        }
+        if !list.is_empty() {
+            break;
         }
     }
 
@@ -1372,7 +1399,12 @@ pub async fn search_place(query: &str) -> Vec<PlaceInfo> {
 }
 
 pub async fn ai_region_brief(region: String, summary_context: String, endpoint: String, model: String) -> Result<String, String> {
-    let client = http_client();
+    // Bypass any system proxy/VPN for localhost Ollama + 60s timeout for cold model load
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_secs(60))
+        .build()
+        .unwrap_or_default();
     let base = endpoint.trim_end_matches('/');
     let url = format!("{}/api/chat", base);
     let payload = serde_json::json!({

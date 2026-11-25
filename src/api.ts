@@ -73,6 +73,9 @@ export const api = {
   reverseGeocode: (lat: number, lon: number) =>
     invoke<PlaceInfo>('reverse_geocode', { lat, lon }),
   searchPlace: (query: string) => invoke<PlaceInfo[]>('search_place', { query }),
+  openExternal: (url: string) => invoke<void>('open_external', { url }),
+  saveToDownloads: (filename: string, base64Data: string) =>
+    invoke<string>('save_to_downloads', { filename, base64Data }),
   aiRegionBrief: (
     region: string,
     summaryContext: string,

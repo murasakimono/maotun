@@ -549,6 +549,7 @@ export function GlobeMap({
       }
 
       sound.playPing();
+      onSelectEqRef.current(null); // Clear red felt-radius circle when clicking empty map
       onSelectCoordRef.current(e.lngLat.lat, e.lngLat.lng);
     });
 
@@ -708,24 +709,32 @@ export function GlobeMap({
       })),
     });
 
-    // Update live flight trails history
+    // Update live flight trails history (with jump guard so lines never crisscross the map!)
     const mergedFlights = [...(layers.flights ? flights : []), ...(layers.military ? militaryFlights : [])];
     const tMap = trailsRef.current;
+    const activeHexes = new Set<string>();
     for (const f of mergedFlights) {
-      const prev = tMap.get(f.hex) || [];
+      activeHexes.add(f.hex);
+      let prev = tMap.get(f.hex) || [];
       const last = prev[prev.length - 1];
-      if (!last || Math.hypot(last[0] - f.lon, last[1] - f.lat) > 0.01) {
-        // Also project a crisp short tail behind heading so trails are immediately visible!
+      if (last && Math.hypot(last[0] - f.lon, last[1] - f.lat) > 1.2) {
+        prev = [];
+      }
+      if (!last || prev.length === 0 || Math.hypot(last[0] - f.lon, last[1] - f.lat) > 0.008) {
         if (prev.length === 0) {
           const rad = ((f.heading + 180) * Math.PI) / 180;
-          const tailLon = f.lon + Math.sin(rad) * 0.18;
-          const tailLat = f.lat + Math.cos(rad) * 0.14;
+          const tailLon = f.lon + Math.sin(rad) * 0.14;
+          const tailLat = f.lat + Math.cos(rad) * 0.11;
           prev.push([tailLon, tailLat]);
         }
         prev.push([f.lon, f.lat]);
-        if (prev.length > 10) prev.shift();
+        if (prev.length > 8) prev.shift();
         tMap.set(f.hex, prev);
       }
+    }
+    // Prune stale hexes no longer in view
+    for (const k of Array.from(tMap.keys())) {
+      if (!activeHexes.has(k)) tMap.delete(k);
     }
 
     const trailFeatures: GeoJSON.Feature[] = [];

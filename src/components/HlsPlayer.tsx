@@ -38,8 +38,9 @@ export const HlsPlayer: React.FC<HlsPlayerProps> = ({
 
     let hls: Hls | null = null;
     let retries = 0;
+    let fellBackDirect = false;
 
-    const startStream = async () => {
+    const startStream = async (forceDirect = false) => {
       if (cachedProxyPort === 0) {
         try {
           cachedProxyPort = await api.getProxyPort();
@@ -49,13 +50,14 @@ export const HlsPlayer: React.FC<HlsPlayerProps> = ({
       }
       if (cancelled) return;
 
-      const useProxy = cachedProxyPort > 0 && (src.startsWith('http://') || src.startsWith('https://'));
+      const useProxy = !forceDirect && cachedProxyPort > 0 && (src.startsWith('http://') || src.startsWith('https://'));
       const effectiveUrl = useProxy
         ? `http://127.0.0.1:${cachedProxyPort}/stream?url=${encodeURIComponent(src)}`
         : src;
       setProxied(useProxy);
 
       if (Hls.isSupported()) {
+        if (hls) hls.destroy();
         hls = new Hls({
           enableWorker: true,
           lowLatencyMode: false,
@@ -85,6 +87,11 @@ export const HlsPlayer: React.FC<HlsPlayerProps> = ({
 
         hls.on(Hls.Events.ERROR, (_e, data) => {
           if (!data.fatal) return;
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR && useProxy && !fellBackDirect) {
+            fellBackDirect = true;
+            startStream(true);
+            return;
+          }
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR && retries < 2) {
             retries += 1;
             hls?.startLoad();
@@ -93,7 +100,7 @@ export const HlsPlayer: React.FC<HlsPlayerProps> = ({
             hls?.recoverMediaError();
           } else {
             setBuffering(false);
-            setErr('Yayın kaynağı şu an çevrimdışı.');
+            setErr('Yayın kaynağı şu an çevrimdışı veya erişilemiyor.');
           }
         });
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
@@ -102,7 +109,7 @@ export const HlsPlayer: React.FC<HlsPlayerProps> = ({
       }
     };
 
-    startStream();
+    startStream(false);
 
     const onWaiting = () => setBuffering(true);
     const onPlaying = () => {

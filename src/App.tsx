@@ -320,9 +320,14 @@ export function App() {
     }
   }, [rules, config.firmsKey]);
 
+  // Startup full load + fast 90s refresh for live earthquakes & flights only!
   useEffect(() => {
     refreshAll();
-    const id = setInterval(refreshAll, 120_000);
+    const id = setInterval(() => {
+      api.getEarthquakes().then(setEarthquakes).catch(() => {});
+      api.getFlights(39.0, 34.0, 250).then(setFlights).catch(() => {});
+      api.getMilitaryFlights().then(setMilitaryFlights).catch(() => {});
+    }, 90_000);
     return () => clearInterval(id);
   }, [refreshAll]);
 
@@ -508,6 +513,12 @@ export function App() {
         },
       },
       { id: 'act-disc', group: 'KEŞİF', label: 'Rastgele Mekân Avı & Fotoğraf Pasaportu', run: () => setDiscoveryOpen(true) },
+      { id: 'act-trfog', group: 'KEŞİF', label: '81 İl Türkiye Sisi Kaldır & PNG Kartı', run: () => setTurkeyFogOpen(true) },
+      { id: 'act-hunt', group: 'OYUN', label: 'Sinyal Avı — Canlı Kamera GeoGuessr', run: () => setSignalHuntOpen(true) },
+      { id: 'act-hist', group: 'TARİH', label: 'Tarihsel Zaman Makinesi (Bugün Tarihte)', run: () => setHistoryOpen(true) },
+      { id: 'act-cmp', group: 'ARAÇ', label: 'Canlı Bölge & Yaşam Maliyeti Karşılaştır', run: () => setCompareOpen(true) },
+      { id: 'act-cyber', group: 'SİBER', label: `Canlı Siber Tehdit C2 (${layers.cyberThreats ? 'Kapat' : 'Aç'})`, run: () => toggleLayer('cyberThreats') },
+      { id: 'act-wind', group: 'DOĞA', label: `Canlı Rüzgâr Akış Çizgileri (${layers.windFlow ? 'Kapat' : 'Aç'})`, run: () => toggleLayer('windFlow') },
       { id: 'act-wall', group: 'MEDYA', label: '6-Şehir Çoklu Kamera Duvarı', run: () => setWallOpen(true) },
       { id: 'act-radio', group: 'MEDYA', label: 'Canlı Yerel Radyolar (FFT)', run: () => openDrawerTo('media', 'radio') },
       { id: 'act-tv', group: 'MEDYA', label: 'Canlı TV Kanalları (IPTV)', run: () => openDrawerTo('media', 'tv') },
@@ -674,6 +685,19 @@ export function App() {
 
       {/* Active Mode / Alert / Measurement / NASA GIBS Date Floating Pills */}
       <div className="fixed top-16 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2 pointer-events-none">
+        {selectedEq && (
+          <div className="atlas-glass rounded-full px-4 py-1.5 flex items-center gap-2.5 pointer-events-auto text-xs border border-[#E85D4A]/40">
+            <span className="w-2 h-2 rounded-full bg-[#E85D4A]" />
+            <span>Deprem Etki Alanı: M{selectedEq.mag.toFixed(1)} {selectedEq.title}</span>
+            <button
+              onClick={() => { sound.playClick(); setSelectedEq(null); }}
+              className="px-2 py-0.5 rounded-md bg-white/10 hover:bg-[#E85D4A] hover:text-white text-[10px] cursor-pointer"
+            >
+              Alanı Kapat
+            </button>
+          </div>
+        )}
+
         {(alertBanner || autopilotLabel) && (
           <div className="atlas-glass rounded-full px-4 py-1.5 flex items-center gap-2.5 pointer-events-auto text-xs">
             <span className="w-2 h-2 rounded-full bg-[#E85D4A] animate-pulse" />

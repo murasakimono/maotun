@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Check, Download, Map, X } from 'lucide-react';
 import { TURKEY_81, type TurkeyProvince } from '../data/turkey81';
+import { api } from '../api';
 import { sound } from '../sound';
 
 interface TurkeyFogModalProps {
@@ -30,6 +31,7 @@ export function TurkeyFogModal({
   onFlyTo,
 }: TurkeyFogModalProps) {
   const [region, setRegion] = useState<'Tümü' | TurkeyProvince['region']>('Tümü');
+  const [saveMsg, setSaveMsg] = useState('');
 
   if (!open) return null;
 
@@ -80,10 +82,12 @@ export function TurkeyFogModal({
       }
     });
 
-    const a = document.createElement('a');
-    a.href = canvas.toDataURL('image/png');
-    a.download = `maotun-turkiye-kesif-${visitedPlakas.length}-81.png`;
-    a.click();
+    const dataUrl = canvas.toDataURL('image/png');
+    const fname = `maotun-turkiye-kesif-${visitedPlakas.length}-81.png`;
+    api
+      .saveToDownloads(fname, dataUrl)
+      .then((savedPath) => setSaveMsg(`İndirilenler'e kaydedildi: ${savedPath}`))
+      .catch(() => setSaveMsg('Kaydetme sırasında hata oluştu.'));
   };
 
   return (
@@ -112,10 +116,11 @@ export function TurkeyFogModal({
         </div>
 
         {/* Progress Bar */}
-        <div className="px-5 pt-3">
+        <div className="px-5 pt-3 space-y-1.5">
           <div className="h-2 rounded-full bg-white/[0.07] overflow-hidden">
             <div className="h-full bg-[#E5A952] transition-all duration-300" style={{ width: `${pct}%` }} />
           </div>
+          {saveMsg && <div className="text-[11px] text-[#4ADE80] font-mono-tech">{saveMsg}</div>}
         </div>
 
         {/* Region Filter Pills */}

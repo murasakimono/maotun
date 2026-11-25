@@ -70,11 +70,9 @@ async fn handle_conn(mut stream: TcpStream, client: reqwest::Client, port: u16) 
         return Ok(());
     }
 
-    let origin = extract_origin(&target_url);
     let upstream = client
         .get(&target_url)
-        .header("Referer", format!("{}/", origin))
-        .header("Origin", &origin)
+        .header("Accept", "*/*")
         .send()
         .await;
 

@@ -160,6 +160,62 @@ async fn search_place(query: String) -> Vec<PlaceInfo> {
 }
 
 #[tauri::command]
+fn open_external(url: String) -> Result<(), String> {
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return Err("Geçersiz URL".to_string());
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", &url])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn save_to_downloads(filename: String, base64_data: String) -> Result<String, String> {
+    let safe_name: String = filename
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_' || *c == '.')
+        .collect();
+    if safe_name.is_empty() {
+        return Err("Geçersiz dosya adı".to_string());
+    }
+    let home = std::env::var("USERPROFILE").unwrap_or_else(|_| ".".to_string());
+    let path = std::path::PathBuf::from(home).join("Downloads").join(&safe_name);
+    let raw_b64 = base64_data.split(',').last().unwrap_or(&base64_data);
+    let bytes = decode_b64(raw_b64)?;
+    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+fn decode_b64(input: &str) -> Result<Vec<u8>, String> {
+    let mut out = Vec::with_capacity(input.len() * 3 / 4);
+    let mut buf: u32 = 0;
+    let mut bits: u8 = 0;
+    for b in input.bytes() {
+        let val = match b {
+            b'A'..=b'Z' => b - b'A',
+            b'a'..=b'z' => b - b'a' + 26,
+            b'0'..=b'9' => b - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            b'=' | b'\n' | b'\r' | b' ' => continue,
+            _ => return Err("Base64 karakter hatası".to_string()),
+        };
+        buf = (buf << 6) | (val as u32);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buf >> bits) as u8);
+        }
+    }
+    Ok(out)
+}
+
+#[tauri::command]
 async fn ai_region_brief(
     region: String,
     summary_context: String,
@@ -208,6 +264,8 @@ pub fn run() {
             get_live_cameras,
             reverse_geocode,
             search_place,
+            open_external,
+            save_to_downloads,
             ai_region_brief
         ])
         .run(tauri::generate_context!())

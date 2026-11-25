@@ -49,14 +49,12 @@ export function HistoryModal({ open, onClose }: HistoryModalProps) {
               <div className="flex-1 min-w-0">
                 <div className="text-xs text-[#E6E8EC] leading-relaxed">{ev.text}</div>
                 {ev.url && (
-                  <a
-                    href={ev.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 text-[11px] text-[#60A5FA] hover:underline mt-1"
+                  <button
+                    onClick={() => api.openExternal(ev.url)}
+                    className="inline-flex items-center gap-1 text-[11px] text-[#60A5FA] hover:underline mt-1 cursor-pointer"
                   >
                     {ev.title} <ExternalLink className="w-3 h-3" />
-                  </a>
+                  </button>
                 )}
               </div>
             </div>

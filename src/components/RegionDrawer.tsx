@@ -106,6 +106,7 @@ export function RegionDrawer({
   const [mediaWorks, setMediaWorks] = useState<MediaWork[]>([]);
   const [osmPois, setOsmPois] = useState<OsmPoi[]>([]);
   const [activePoiKind, setActivePoiKind] = useState<string>('');
+  const [osmLoading, setOsmLoading] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const [playingTv, setPlayingTv] = useState<TvChannel | null>(null);
@@ -216,9 +217,18 @@ export function RegionDrawer({
   const regionCams = cameras.filter(
     (c) =>
       c.country_code === place.country_code ||
-      Math.hypot(c.lat - place.lat, c.lon - place.lon) < 8
+      Math.hypot(c.lat - place.lat, c.lon - place.lon) < 5
   );
-  const displayCams = regionCams.length > 0 ? regionCams.slice(0, 20) : cameras.slice(0, 20);
+  const hasLocalCams = regionCams.length > 0;
+  const displayCams = (
+    hasLocalCams
+      ? regionCams
+      : [...cameras].sort(
+          (a, b) =>
+            Math.hypot(a.lat - place.lat, a.lon - place.lon) -
+            Math.hypot(b.lat - place.lat, b.lon - place.lon)
+        )
+  ).slice(0, 20);
 
   const astro = computeAstroInfo(
     forecast?.daily[0]?.sunrise,
@@ -229,9 +239,11 @@ export function RegionDrawer({
   const loadOsmKind = async (kind: string) => {
     sound.playClick();
     setActivePoiKind(kind);
+    setOsmLoading(true);
     const list = await api.getOsmNearby(place.lat, place.lon, kind).catch(() => []);
     setOsmPois(list);
     onShowOsmPois(list);
+    setOsmLoading(false);
   };
 
   const handleAddCam = () => {
@@ -643,9 +655,13 @@ export function RegionDrawer({
                   </div>
                 )}
 
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-[#8E95A3]">{displayCams.length} kamera</span>
-                  <button onClick={() => setShowAddCam((v) => !v)} className="atlas-btn px-2.5 py-1 bg-white/[0.05] text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] text-[#8E95A3]">
+                    {hasLocalCams
+                      ? `${displayCams.length} yerel kamera`
+                      : `Bu bölgede açık kamera yok — En yakın ${displayCams.length} kamera`}
+                  </span>
+                  <button onClick={() => setShowAddCam((v) => !v)} className="atlas-btn px-2.5 py-1 bg-white/[0.05] text-xs shrink-0">
                     <Plus className="w-3.5 h-3.5 text-[#E5A952]" /> Kamera Ekle
                   </button>
                 </div>
@@ -765,12 +781,10 @@ export function RegionDrawer({
                 {nearbySdr.map((k, i) => {
                   const safeUrl = k.url.startsWith('http') ? k.url : `http://${k.url}`;
                   return (
-                    <a
+                    <button
                       key={i}
-                      href={safeUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block px-3 py-2 rounded-xl hover:bg-white/[0.05] transition"
+                      onClick={() => { sound.playClick(); api.openExternal(safeUrl); }}
+                      className="w-full text-left block px-3 py-2 rounded-xl hover:bg-white/[0.05] transition cursor-pointer"
                     >
                       <div className="flex items-center justify-between gap-2 text-xs">
                         <span className="font-medium text-[#E6E8EC] truncate">{k.name}</span>
@@ -779,7 +793,7 @@ export function RegionDrawer({
                       <div className="font-mono-tech text-[10px] text-[#8E95A3] mt-0.5">
                         {k.bands} • {k.users}/{k.users_max} kullanıcı
                       </div>
-                    </a>
+                    </button>
                   );
                 })}
               </div>
@@ -814,6 +828,22 @@ export function RegionDrawer({
                   </button>
                 ))}
               </div>
+              {osmLoading && (
+                <div className="text-[11px] text-[#E5A952] animate-pulse">Overpass harita verisi çekiliyor...</div>
+              )}
+              {!osmLoading && activePoiKind && (
+                <div className="flex items-center justify-between text-[11px] text-[#4ADE80]">
+                  <span>{osmPois.length > 0 ? `${osmPois.length} nokta yeşil pin olarak haritaya işlendi` : 'Bu çevrede kayıtlı nokta bulunamadı'}</span>
+                  {osmPois.length > 0 && (
+                    <button
+                      onClick={() => { setOsmPois([]); setActivePoiKind(''); onShowOsmPois([]); }}
+                      className="text-[#8E95A3] hover:text-white underline cursor-pointer"
+                    >
+                      Temizle
+                    </button>
+                  )}
+                </div>
+              )}
               {osmPois.length > 0 && (
                 <div className="max-h-36 overflow-y-auto space-y-1 pt-1">
                   {osmPois.slice(0, 12).map((p) => (
@@ -825,14 +855,12 @@ export function RegionDrawer({
                 </div>
               )}
               {place.country_code === 'TR' && (
-                <a
-                  href="https://www.turkiye.gov.tr/saglik-titck-nobetci-eczane-sorgulama"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-[11px] text-[#E5A952] hover:underline"
+                <button
+                  onClick={() => api.openExternal('https://www.turkiye.gov.tr/saglik-titck-nobetci-eczane-sorgulama')}
+                  className="inline-flex items-center gap-1.5 text-[11px] text-[#E5A952] hover:underline cursor-pointer"
                 >
                   Resmî e-Devlet Nöbetçi Eczane Sorgula <ExternalLink className="w-3 h-3" />
-                </a>
+                </button>
               )}
             </div>
 
@@ -943,19 +971,17 @@ export function RegionDrawer({
             <div className="space-y-1.5">
               <div className="text-xs font-semibold text-[#8E95A3]">Bölge Haberleri ({news.length})</div>
               {news.map((n, i) => (
-                <a
+                <button
                   key={i}
-                  href={n.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="block p-2.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.07] transition"
+                  onClick={() => { sound.playClick(); api.openExternal(n.url); }}
+                  className="w-full text-left block p-2.5 rounded-xl bg-white/[0.03] hover:bg-white/[0.07] transition cursor-pointer"
                 >
                   <div className="text-xs text-[#E6E8EC] leading-snug">{n.title}</div>
                   <div className="text-[10px] text-[#8E95A3] mt-1 flex items-center justify-between">
                     <span>{n.domain}</span>
                     <ExternalLink className="w-3 h-3 text-[#E5A952]" />
                   </div>
-                </a>
+                </button>
               ))}
               {!loading && news.length === 0 && (
                 <div className="text-xs text-[#5C6372] py-4 text-center">Bu bölge için güncel haber bulunamadı.</div>
