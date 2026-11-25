@@ -3,32 +3,31 @@
 
 @layer base {
   :root {
-    --bg-void: #08090B;
-    --bg-chassis: #0E1013;
-    --bg-plate: #13161B;
-    --bg-well: #090A0D;
-    --line-hair: #242830;
-    --line-bright: #363C47;
-    --ink-primary: #ECEEF2;
-    --ink-muted: #7C8492;
-    --ink-dim: #4D5461;
-    --signal-orange: #FF4D00;
-    --signal-amber: #FFB800;
-    --signal-cyan: #00D4FF;
-    --signal-green: #00E58A;
-    --signal-red: #FF2A3B;
+    --bg-obsidian: #090B0E;
+    --bg-surface: rgba(15, 18, 24, 0.84);
+    --bg-surface-solid: #101319;
+    --bg-elevated: rgba(23, 27, 35, 0.9);
+    --hairline: rgba(255, 255, 255, 0.08);
+    --hairline-strong: rgba(255, 255, 255, 0.16);
+    --ink-silver: #E6E8EC;
+    --ink-muted: #8E95A3;
+    --ink-dim: #5C6372;
+    --amber: #E5A952;
+    --amber-soft: rgba(229, 169, 82, 0.15);
+    --coral: #E85D4A;
+    --mint: #4ADE80;
+    --sky: #60A5FA;
   }
 
   * {
     box-sizing: border-box;
-    border-radius: 0px;
   }
 
   body {
     margin: 0;
-    font-family: "Chakra Petch", system-ui, sans-serif;
-    background: var(--bg-void);
-    color: var(--ink-primary);
+    font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--bg-obsidian);
+    color: var(--ink-silver);
     overflow: hidden;
   }
 
@@ -38,157 +37,149 @@
   }
 }
 
-/* Swiss / Braun Instrument Surface */
+/* Mature Obsidian Glass — No boxy clutter, soft luminance & hairline separation */
+.atlas-glass {
+  background: var(--bg-surface);
+  border: 1px solid var(--hairline);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
+}
+
+.atlas-pill {
+  background: rgba(14, 17, 23, 0.78);
+  border: 1px solid var(--hairline);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+.atlas-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #C4C9D4;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 10px;
+  transition: background-color 140ms ease, color 140ms ease, transform 90ms ease;
+  cursor: pointer;
+}
+
+.atlas-btn:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #FFFFFF;
+}
+
+.atlas-btn:active {
+  transform: scale(0.97);
+}
+
+.atlas-btn-amber {
+  background: var(--amber);
+  color: #0B0D11;
+  font-weight: 600;
+}
+
+.atlas-btn-amber:hover {
+  background: #F0BA6B;
+  color: #0B0D11;
+}
+
+.atlas-divider {
+  border-color: var(--hairline);
+}
+
+/* Modal compatibility surfaces aligned with Obsidian Silver-Amber */
 .inst-panel {
-  background: rgba(14, 16, 19, 0.92);
-  border: 1px solid var(--line-hair);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(8px);
+  background: var(--bg-surface);
+  border: 1px solid var(--hairline);
+  border-radius: 16px;
+  backdrop-filter: blur(20px) saturate(140%);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
 }
-
 .inst-plate {
-  background: var(--bg-plate);
-  border: 1px solid var(--line-hair);
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--hairline);
+  border-radius: 12px;
 }
-
 .inst-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  background: #13161B;
-  border: 1px solid #262A33;
-  color: #B4BBC7;
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  transition: transform 90ms cubic-bezier(0.2, 0.9, 0.3, 1), border-color 110ms ease, color 110ms ease, background-color 110ms ease;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  color: #C4C9D4;
+  font-size: 12px;
+  font-weight: 500;
+  transition: background-color 140ms ease, color 140ms ease;
   cursor: pointer;
 }
-
 .inst-btn:hover {
-  border-color: #4A5261;
-  color: #ECEEF2;
-  background: #191D24;
-}
-
-.inst-btn:active {
-  transform: translateY(1px);
-}
-
-.inst-btn-active {
-  background: rgba(255, 77, 0, 0.14);
-  border-color: var(--signal-orange);
+  background: rgba(255, 255, 255, 0.1);
   color: #FFFFFF;
 }
-
+.inst-btn-active {
+  background: rgba(229, 169, 82, 0.18);
+  border-color: rgba(229, 169, 82, 0.5);
+  color: #E5A952;
+}
 .inst-btn-orange {
-  background: var(--signal-orange);
-  border: 1px solid var(--signal-orange);
-  color: #08090B;
+  background: var(--amber);
+  border: 1px solid var(--amber);
+  color: #090B0E;
   font-weight: 600;
 }
-
 .inst-btn-orange:hover {
-  background: #FF621F;
-  border-color: #FF621F;
-  color: #08090B;
+  background: #F0BA6B;
+  color: #090B0E;
 }
 
-/* Corner registration marks (Swiss cartographic framing) */
-.reticle-corner {
-  position: relative;
-}
-.reticle-corner::before,
-.reticle-corner::after {
-  content: "";
-  position: absolute;
-  width: 7px;
-  height: 7px;
-  pointer-events: none;
-}
-.reticle-corner::before {
-  top: -1px;
-  left: -1px;
-  border-top: 1px solid var(--signal-orange);
-  border-left: 1px solid var(--signal-orange);
-}
-.reticle-corner::after {
-  bottom: -1px;
-  right: -1px;
-  border-bottom: 1px solid var(--signal-orange);
-  border-right: 1px solid var(--signal-orange);
-}
-
-/* Subtle coordinate ruler background */
-.ruler-x {
-  background-image: repeating-linear-gradient(
-    to right,
-    rgba(255, 255, 255, 0.16) 0px,
-    rgba(255, 255, 255, 0.16) 1px,
-    transparent 1px,
-    transparent 12px
-  );
-}
-
-.led-dot {
-  width: 6px;
-  height: 6px;
-  display: inline-block;
-  flex-shrink: 0;
-}
-
-@keyframes pulse-led {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
-}
-.animate-led {
-  animation: pulse-led 1.4s steps(2, end) infinite;
-}
-
-/* Custom MapLibre Popups */
+/* Custom MapLibre Dark Popups */
 .maplibregl-popup-content {
-  background: #0E1013 !important;
-  color: #ECEEF2 !important;
-  border: 1px solid #363C47 !important;
-  border-left: 2px solid #FF4D00 !important;
-  border-radius: 0px !important;
-  padding: 10px 12px !important;
-  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.72) !important;
-  font-family: "IBM Plex Mono", monospace !important;
-  font-size: 11px !important;
+  background: rgba(15, 18, 24, 0.94) !important;
+  color: #E6E8EC !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 12px !important;
+  padding: 12px 14px !important;
+  backdrop-filter: blur(16px) !important;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.65) !important;
+  font-family: "Plus Jakarta Sans", sans-serif !important;
+  font-size: 12px !important;
 }
 
 .maplibregl-popup-tip {
-  border-top-color: #363C47 !important;
-  border-bottom-color: #363C47 !important;
+  border-top-color: rgba(15, 18, 24, 0.94) !important;
+  border-bottom-color: rgba(15, 18, 24, 0.94) !important;
 }
 
 .maplibregl-popup-close-button {
-  color: #7C8492 !important;
+  color: #8E95A3 !important;
   font-size: 16px !important;
-  padding: 2px 6px !important;
+  padding: 4px 8px !important;
 }
 
 .maplibregl-ctrl-attrib {
-  background: rgba(8, 9, 11, 0.75) !important;
-  color: #5C6370 !important;
-  font-family: "IBM Plex Mono", monospace !important;
+  background: rgba(9, 11, 14, 0.6) !important;
+  color: #5C6372 !important;
   font-size: 9px !important;
+  border-radius: 6px !important;
 }
 
-/* Custom Slim Technical Scrollbar */
 ::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
-  background: #0B0C0E;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2C313C;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 99px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #FF4D00;
+  background: rgba(229, 169, 82, 0.55);
 }

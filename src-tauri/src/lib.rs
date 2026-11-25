@@ -39,8 +39,8 @@ async fn get_rainviewer_meta() -> RainViewerMeta {
 }
 
 #[tauri::command]
-async fn get_weather_aqi(lat: f64, lon: f64) -> WeatherAqi {
-    feeds::fetch_weather_aqi(lat, lon).await
+async fn get_forecast_rich(lat: f64, lon: f64) -> RichForecast {
+    feeds::fetch_forecast_rich(lat, lon).await
 }
 
 #[tauri::command]
@@ -56,6 +56,46 @@ async fn get_ships() -> Vec<ShipItem> {
 #[tauri::command]
 async fn get_firms_fires(map_key: String) -> Vec<FireHotspot> {
     feeds::fetch_firms_fires(&map_key).await
+}
+
+#[tauri::command]
+async fn get_rockets() -> Vec<RocketLaunch> {
+    feeds::fetch_rockets().await
+}
+
+#[tauri::command]
+async fn get_fireballs() -> Vec<FireballItem> {
+    feeds::fetch_fireballs().await
+}
+
+#[tauri::command]
+async fn get_tor_relays() -> Vec<TorRelay> {
+    feeds::fetch_tor_relays().await
+}
+
+#[tauri::command]
+async fn get_wiki_nearby(lat: f64, lon: f64, country_code: String) -> Vec<WikiPlace> {
+    feeds::fetch_wiki_nearby(lat, lon, &country_code).await
+}
+
+#[tauri::command]
+async fn get_inaturalist(lat: f64, lon: f64) -> Vec<WildlifeObs> {
+    feeds::fetch_inaturalist(lat, lon).await
+}
+
+#[tauri::command]
+async fn get_osm_nearby(lat: f64, lon: f64, kind: String) -> Vec<OsmPoi> {
+    feeds::fetch_osm_nearby(lat, lon, &kind).await
+}
+
+#[tauri::command]
+async fn get_country_context(country_code: String) -> CountryContext {
+    feeds::fetch_country_context(&country_code).await
+}
+
+#[tauri::command]
+async fn get_istanbul_data() -> IstanbulData {
+    feeds::fetch_istanbul_data().await
 }
 
 #[tauri::command]
@@ -114,10 +154,18 @@ pub fn run() {
             get_satellite_tles,
             get_kiwisdr_nodes,
             get_rainviewer_meta,
-            get_weather_aqi,
+            get_forecast_rich,
             get_space_weather,
             get_ships,
             get_firms_fires,
+            get_rockets,
+            get_fireballs,
+            get_tor_relays,
+            get_wiki_nearby,
+            get_inaturalist,
+            get_osm_nearby,
+            get_country_context,
+            get_istanbul_data,
             get_radios,
             get_tv_channels,
             get_news,

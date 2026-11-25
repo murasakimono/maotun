@@ -9,7 +9,7 @@ pub struct EarthquakeItem {
     pub lat: f64,
     pub lon: f64,
     pub time_str: String,
-    pub source: String, // "KANDİLLİ" | "AFAD" | "USGS"
+    pub source: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,7 +32,7 @@ pub struct FlightItem {
     pub speed_kt: f64,
     pub heading: f64,
     pub aircraft_type: String,
-    pub category: String, // "CIVIL" | "MIL" | "LADD" | "PIA"
+    pub category: String,
     pub squawk: String,
 }
 
@@ -40,7 +40,7 @@ pub struct FlightItem {
 pub struct SatelliteTle {
     pub id: String,
     pub name: String,
-    pub group: String, // "STATION" | "WEATHER" | "GPS" | "STARLINK"
+    pub group: String,
     pub tle1: String,
     pub tle2: String,
 }
@@ -70,15 +70,46 @@ pub struct RainViewerMeta {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WeatherAqi {
+pub struct DailyWeather {
+    pub date: String,
+    pub temp_max: f64,
+    pub temp_min: f64,
+    pub rain_prob: i64,
+    pub weather_code: i64,
+    pub uv_max: f64,
+    pub sunrise: String,
+    pub sunset: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HourlyWeather {
+    pub time: String,
     pub temp_c: f64,
+    pub rain_prob: i64,
+    pub cloud_cover: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RichForecast {
+    pub temp_c: f64,
+    pub apparent_c: f64,
     pub wind_kmh: f64,
     pub wind_dir: f64,
     pub humidity: f64,
+    pub cloud_cover: i64,
+    pub weather_code: i64,
     pub pm25: f64,
     pub pm10: f64,
-    pub co: f64,
+    pub dust: f64,
+    pub pollen_grass: f64,
+    pub pollen_olive: f64,
     pub us_aqi: i64,
+    pub sea_temp_c: Option<f64>,
+    pub wave_height_m: Option<f64>,
+    pub river_discharge: Option<f64>,
+    pub river_mean: Option<f64>,
+    pub daily: Vec<DailyWeather>,
+    pub hourly: Vec<HourlyWeather>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -114,6 +145,101 @@ pub struct FireHotspot {
     pub brightness: f64,
     pub frp: f64,
     pub acq_date: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RocketLaunch {
+    pub id: String,
+    pub name: String,
+    pub provider: String,
+    pub pad_name: String,
+    pub lat: f64,
+    pub lon: f64,
+    pub net: String,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FireballItem {
+    pub date: String,
+    pub lat: f64,
+    pub lon: f64,
+    pub alt_km: f64,
+    pub energy_kt: f64,
+    pub vel_kms: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TorRelay {
+    pub nickname: String,
+    pub country: String,
+    pub lat: f64,
+    pub lon: f64,
+    pub bandwidth_mbps: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WikiPlace {
+    pub pageid: i64,
+    pub title: String,
+    pub lat: f64,
+    pub lon: f64,
+    pub dist_m: f64,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WildlifeObs {
+    pub id: i64,
+    pub species: String,
+    pub common_name: String,
+    pub observed_on: String,
+    pub photo_url: String,
+    pub lat: f64,
+    pub lon: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OsmPoi {
+    pub id: i64,
+    pub name: String,
+    pub kind: String,
+    pub lat: f64,
+    pub lon: f64,
+    pub extra: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OoniAlert {
+    pub domain: String,
+    pub test_name: String,
+    pub anomaly: bool,
+    pub confirmed: bool,
+    pub time_str: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CountryContext {
+    pub usd_try: f64,
+    pub eur_try: f64,
+    pub gbp_try: f64,
+    pub local_currency: String,
+    pub local_to_try: Option<f64>,
+    pub next_holiday: String,
+    pub ooni_alerts: Vec<OoniAlert>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IstanbulDam {
+    pub name: String,
+    pub percent: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IstanbulData {
+    pub total_dam_percent: f64,
+    pub dams: Vec<IstanbulDam>,
+    pub note: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -169,7 +295,7 @@ pub struct LiveCameraItem {
     pub country_code: String,
     pub lat: f64,
     pub lon: f64,
-    pub kind: String, // "hls" | "mp4" | "snapshot" | "youtube"
+    pub kind: String,
     pub embed_url: String,
     pub refresh_sec: Option<u32>,
 }

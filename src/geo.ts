@@ -4,7 +4,16 @@ import type { SatelliteLive, SatelliteTle } from './types';
 const RAD = Math.PI / 180;
 const DEG = 180 / Math.PI;
 
-// 1. Real-Time Solar Terminator (Night Hemisphere Polygon GeoJSON)
+export function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const dLat = (lat2 - lat1) * RAD;
+  const dLon = (lon2 - lon1) * RAD;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * RAD) * Math.cos(lat2 * RAD) * Math.sin(dLon / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// 1. Real-Time Solar Terminator (Night Hemisphere Polygon)
 export function buildSolarTerminatorGeoJSON(date = new Date()): GeoJSON.FeatureCollection {
   const jd = date.getTime() / 86400000 + 2440587.5;
   const n = jd - 2451545.0;
@@ -14,7 +23,6 @@ export function buildSolarTerminatorGeoJSON(date = new Date()): GeoJSON.FeatureC
   const epsilon = (23.439 - 0.0000004 * n) * RAD;
   const dec = Math.asin(Math.sin(epsilon) * Math.sin(lambda));
 
-  // Subsolar longitude
   const utcHours =
     date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
   let subsolarLon = (12 - utcHours) * 15;
@@ -26,9 +34,7 @@ export function buildSolarTerminatorGeoJSON(date = new Date()): GeoJSON.FeatureC
     const ha = (lon - subsolarLon) * RAD;
     const tanDec = Math.tan(dec);
     const lat =
-      Math.abs(tanDec) < 1e-6
-        ? 0
-        : Math.atan(-Math.cos(ha) / tanDec) * DEG;
+      Math.abs(tanDec) < 1e-6 ? 0 : Math.atan(-Math.cos(ha) / tanDec) * DEG;
     coords.push([lon, Math.max(-85, Math.min(85, lat))]);
   }
 
@@ -52,7 +58,196 @@ export function buildSolarTerminatorGeoJSON(date = new Date()): GeoJSON.FeatureC
   };
 }
 
-// 2. Real SGP4 Satellite Propagation via satellite.js
+// 2. Geodesic Circle Polygon (Earthquake Felt Radius Ring)
+export function buildCircleGeoJSON(lat: number, lon: number, radiusKm: number): GeoJSON.FeatureCollection {
+  const pts: [number, number][] = [];
+  const steps = 64;
+  const angDist = radiusKm / 6371;
+  const latR = lat * RAD;
+  const lonR = lon * RAD;
+
+  for (let i = 0; i <= steps; i++) {
+    const brng = (i / steps) * Math.PI * 2;
+    const pLat = Math.asin(
+      Math.sin(latR) * Math.cos(angDist) +
+        Math.cos(latR) * Math.sin(angDist) * Math.cos(brng)
+    );
+    const pLon =
+      lonR +
+      Math.atan2(
+        Math.sin(brng) * Math.sin(angDist) * Math.cos(latR),
+        Math.cos(angDist) - Math.sin(latR) * Math.sin(pLat)
+      );
+    pts.push([pLon * DEG, pLat * DEG]);
+  }
+
+  return {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: { radiusKm },
+        geometry: { type: 'Polygon', coordinates: [pts] },
+      },
+    ],
+  };
+}
+
+// 3. 2-Point Great Circle Arc GeoJSON
+export function buildGreatCircleArcGeoJSON(
+  p1: { lat: number; lon: number },
+  p2: { lat: number; lon: number }
+): GeoJSON.FeatureCollection {
+  const coords: [number, number][] = [];
+  const lat1 = p1.lat * RAD;
+  const lon1 = p1.lon * RAD;
+  const lat2 = p2.lat * RAD;
+  const lon2 = p2.lon * RAD;
+  const d =
+    2 *
+    Math.asin(
+      Math.sqrt(
+        Math.sin((lat2 - lat1) / 2) ** 2 +
+          Math.cos(lat1) * Math.cos(lat2) * Math.sin((lon2 - lon1) / 2) ** 2
+      )
+    );
+
+  const steps = 64;
+  for (let i = 0; i <= steps; i++) {
+    const f = i / steps;
+    if (d < 1e-6) {
+      coords.push([p1.lon, p1.lat]);
+      continue;
+    }
+    const A = Math.sin((1 - f) * d) / Math.sin(d);
+    const B = Math.sin(f * d) / Math.sin(d);
+    const x = A * Math.cos(lat1) * Math.cos(lon1) + B * Math.cos(lat2) * Math.cos(lon2);
+    const y = A * Math.cos(lat1) * Math.sin(lon1) + B * Math.cos(lat2) * Math.sin(lon2);
+    const z = A * Math.sin(lat1) + B * Math.sin(lat2);
+    const lat = Math.atan2(z, Math.sqrt(x * x + y * y)) * DEG;
+    const lon = Math.atan2(y, x) * DEG;
+    coords.push([lon, lat]);
+  }
+
+  return {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'LineString', coordinates: coords },
+      },
+    ],
+  };
+}
+
+// 4. Golden Hour, Moon Phase & Stargazing Score
+export function computeAstroInfo(sunriseIso?: string, sunsetIso?: string, cloudCover = 30) {
+  const synodic = 29.53058867;
+  const knownNewMoon = Date.UTC(2000, 0, 6, 18, 14, 0);
+  const days = (Date.now() - knownNewMoon) / 86400000;
+  const phase = ((days % synodic) + synodic) % synodic;
+  const illum = Math.round(((1 - Math.cos((phase / synodic) * 2 * Math.PI)) / 2) * 100);
+  const phaseName =
+    phase < 1.8
+      ? 'Yeni Ay'
+      : phase < 7.4
+      ? 'Hilal (Büyüyen)'
+      : phase < 11.1
+      ? 'İlk Dördün'
+      : phase < 14.8
+      ? 'Şişkin Ay'
+      : phase < 16.6
+      ? 'Dolunay'
+      : phase < 22.1
+      ? 'Küçülen Ay'
+      : 'Son Dördün';
+
+  const shiftMin = (iso: string | undefined, deltaMin: number) => {
+    if (!iso || iso.length < 16) return '--:--';
+    const hh = Number(iso.slice(11, 13));
+    const mm = Number(iso.slice(14, 16));
+    if (Number.isNaN(hh) || Number.isNaN(mm)) return '--:--';
+    const total = (hh * 60 + mm + deltaMin + 1440) % 1440;
+    return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+  };
+
+  const starScore = Math.max(0, Math.min(100, Math.round((100 - cloudCover) * 0.78 + (100 - illum) * 0.22)));
+  return {
+    sunrise: sunriseIso?.slice(11, 16) || '--:--',
+    sunset: sunsetIso?.slice(11, 16) || '--:--',
+    goldenEvening: `${shiftMin(sunsetIso, -45)}–${shiftMin(sunsetIso, 10)}`,
+    blueEvening: `${shiftMin(sunsetIso, 10)}–${shiftMin(sunsetIso, 38)}`,
+    moonPhase: phaseName,
+    moonIllum: illum,
+    starScore,
+  };
+}
+
+// 5. Pure JS Binary JPEG EXIF GPS Extractor (for verified Discovery photo check-ins!)
+export async function extractExifGps(file: File): Promise<{ lat: number; lon: number } | null> {
+  try {
+    const buf = await file.slice(0, 131072).arrayBuffer();
+    const view = new DataView(buf);
+    if (view.byteLength < 12 || view.getUint16(0, false) !== 0xffd8) return null;
+    let offset = 2;
+    while (offset + 4 < view.byteLength) {
+      const marker = view.getUint16(offset, false);
+      offset += 2;
+      if (marker === 0xffe1) {
+        if (view.getUint32(offset + 2, false) !== 0x45786966) return null; // "Exif"
+        const tiff = offset + 8;
+        const little = view.getUint16(tiff, false) === 0x4949;
+        const firstIfd = view.getUint32(tiff + 4, little);
+        const entries = view.getUint16(tiff + firstIfd, little);
+        let gpsOffset = 0;
+        for (let i = 0; i < entries; i++) {
+          const ent = tiff + firstIfd + 2 + i * 12;
+          if (view.getUint16(ent, little) === 0x8825) {
+            gpsOffset = view.getUint32(ent + 8, little);
+            break;
+          }
+        }
+        if (!gpsOffset) return null;
+        const gpsCount = view.getUint16(tiff + gpsOffset, little);
+        let latRef = 'N';
+        let lonRef = 'E';
+        let latVal: number | null = null;
+        let lonVal: number | null = null;
+        const readDms = (valOff: number) => {
+          const d = view.getUint32(tiff + valOff, little) / (view.getUint32(tiff + valOff + 4, little) || 1);
+          const m = view.getUint32(tiff + valOff + 8, little) / (view.getUint32(tiff + valOff + 12, little) || 1);
+          const s = view.getUint32(tiff + valOff + 16, little) / (view.getUint32(tiff + valOff + 20, little) || 1);
+          return d + m / 60 + s / 3600;
+        };
+        for (let i = 0; i < gpsCount; i++) {
+          const ent = tiff + gpsOffset + 2 + i * 12;
+          const tag = view.getUint16(ent, little);
+          if (tag === 1) latRef = String.fromCharCode(view.getUint8(ent + 8));
+          if (tag === 2) latVal = readDms(view.getUint32(ent + 8, little));
+          if (tag === 3) lonRef = String.fromCharCode(view.getUint8(ent + 8));
+          if (tag === 4) lonVal = readDms(view.getUint32(ent + 8, little));
+        }
+        if (latVal !== null && lonVal !== null) {
+          return {
+            lat: latRef === 'S' ? -latVal : latVal,
+            lon: lonRef === 'W' ? -lonVal : lonVal,
+          };
+        }
+        return null;
+      } else if ((marker & 0xff00) !== 0xff00) {
+        break;
+      } else {
+        offset += view.getUint16(offset, false);
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+// 6. SGP4 Satellite Propagation
 export function propagateSatellites(tles: SatelliteTle[], date = new Date()): SatelliteLive[] {
   const gmst = satellite.gstime(date);
   const out: SatelliteLive[] = [];
@@ -82,13 +277,12 @@ export function propagateSatellites(tles: SatelliteTle[], date = new Date()): Sa
         tle2: t.tle2,
       });
     } catch {
-      // skip malformed TLE
+      // skip
     }
   }
   return out;
 }
 
-// 3. 90-Minute Real Ground Track Orbit Path for a Selected Satellite
 export function computeOrbitPathGeoJSON(sat: SatelliteLive): GeoJSON.FeatureCollection {
   const segments: [number, number][][] = [[]];
   try {
@@ -103,17 +297,13 @@ export function computeOrbitPathGeoJSON(sat: SatelliteLive): GeoJSON.FeatureColl
       const lat = satellite.degreesLat(gd.latitude);
       const lon = satellite.degreesLong(gd.longitude);
       if (Number.isNaN(lat) || Number.isNaN(lon)) continue;
-      // Split line across antimeridian so it doesn't wrap across the entire map
-      if (prevLon !== null && Math.abs(lon - prevLon) > 180) {
-        segments.push([]);
-      }
+      if (prevLon !== null && Math.abs(lon - prevLon) > 180) segments.push([]);
       segments[segments.length - 1].push([lon, lat]);
       prevLon = lon;
     }
   } catch {
     // ignore
   }
-
   return {
     type: 'FeatureCollection',
     features: segments
@@ -126,13 +316,12 @@ export function computeOrbitPathGeoJSON(sat: SatelliteLive): GeoJSON.FeatureColl
   };
 }
 
-// 4. Major Global Submarine Fiber Optic Cables (TeleGeography inspired backbone)
 export const SUBMARINE_CABLES_GEOJSON: GeoJSON.FeatureCollection = {
   type: 'FeatureCollection',
   features: [
     {
       type: 'Feature',
-      properties: { name: 'SEA-ME-WE 5 (Avrupa-Orta Doğu-Asya)', capacity: '24 Tbps' },
+      properties: { name: 'SEA-ME-WE 5 (Avrupa–Orta Doğu–Asya)', capacity: '24 Tbps' },
       geometry: {
         type: 'LineString',
         coordinates: [
@@ -157,9 +346,7 @@ export const SUBMARINE_CABLES_GEOJSON: GeoJSON.FeatureCollection = {
       properties: { name: 'MAREA (Virginia–Bilbao Transatlantik)', capacity: '200 Tbps' },
       geometry: {
         type: 'LineString',
-        coordinates: [
-          [-75.9, 36.8], [-58.0, 40.5], [-38.0, 43.2], [-18.0, 44.1], [-2.9, 43.3],
-        ],
+        coordinates: [[-75.9, 36.8], [-58.0, 40.5], [-38.0, 43.2], [-18.0, 44.1], [-2.9, 43.3]],
       },
     },
     {
@@ -167,29 +354,7 @@ export const SUBMARINE_CABLES_GEOJSON: GeoJSON.FeatureCollection = {
       properties: { name: 'Grace Hopper (NY–Bude–Bilbao)', capacity: '350 Tbps' },
       geometry: {
         type: 'LineString',
-        coordinates: [
-          [-73.2, 40.7], [-50.0, 45.8], [-25.0, 49.5], [-4.5, 50.8],
-        ],
-      },
-    },
-    {
-      type: 'Feature',
-      properties: { name: 'FASTER (Oregon–Chikura Transpasifik)', capacity: '60 Tbps' },
-      geometry: {
-        type: 'LineString',
-        coordinates: [
-          [-124.5, 43.1], [-145.0, 46.5], [-170.0, 45.0], [-179.9, 43.0],
-        ],
-      },
-    },
-    {
-      type: 'Feature',
-      properties: { name: 'FASTER-W (Pasifik Batı Kolu)', capacity: '60 Tbps' },
-      geometry: {
-        type: 'LineString',
-        coordinates: [
-          [179.9, 43.0], [160.0, 39.5], [140.0, 35.0], [136.8, 34.4],
-        ],
+        coordinates: [[-73.2, 40.7], [-50.0, 45.8], [-25.0, 49.5], [-4.5, 50.8]],
       },
     },
     {
@@ -208,26 +373,12 @@ export const SUBMARINE_CABLES_GEOJSON: GeoJSON.FeatureCollection = {
       properties: { name: 'KAFOS (Karadeniz Fiber Hattı)', capacity: '1.2 Tbps' },
       geometry: {
         type: 'LineString',
-        coordinates: [
-          [29.05, 41.2], [28.0, 43.2], [28.6, 44.2], [39.7, 43.5], [41.6, 41.6],
-        ],
-      },
-    },
-    {
-      type: 'Feature',
-      properties: { name: 'SAm-1 (Güney Amerika Ring)', capacity: '32 Tbps' },
-      geometry: {
-        type: 'LineString',
-        coordinates: [
-          [-80.1, 25.8], [-66.1, 18.5], [-38.5, -3.7], [-43.2, -22.9], [-58.4, -34.6],
-          [-71.6, -33.0], [-77.0, -12.0], [-79.5, 8.9],
-        ],
+        coordinates: [[29.05, 41.2], [28.0, 43.2], [28.6, 44.2], [39.7, 43.5], [41.6, 41.6]],
       },
     },
   ],
 };
 
-// 5. Turkey Active Fault Lines (KAF / DAF / Ege / Ölü Deniz)
 export const TURKEY_FAULTS_GEOJSON: GeoJSON.FeatureCollection = {
   type: 'FeatureCollection',
   features: [
@@ -259,9 +410,7 @@ export const TURKEY_FAULTS_GEOJSON: GeoJSON.FeatureCollection = {
       properties: { name: 'Ölü Deniz Fay Zonu' },
       geometry: {
         type: 'LineString',
-        coordinates: [
-          [36.2, 36.4], [36.35, 35.5], [35.9, 34.0], [35.5, 32.5], [35.2, 30.5],
-        ],
+        coordinates: [[36.2, 36.4], [36.35, 35.5], [35.9, 34.0], [35.5, 32.5], [35.2, 30.5]],
       },
     },
     {
@@ -269,10 +418,21 @@ export const TURKEY_FAULTS_GEOJSON: GeoJSON.FeatureCollection = {
       properties: { name: 'Batı Anadolu / Ege Graben Sistemi' },
       geometry: {
         type: 'LineString',
-        coordinates: [
-          [26.8, 38.45], [27.6, 38.4], [28.4, 38.2], [29.1, 37.85], [27.2, 37.85], [27.4, 37.05],
-        ],
+        coordinates: [[26.8, 38.45], [27.6, 38.4], [28.4, 38.2], [29.1, 37.85], [27.2, 37.85], [27.4, 37.05]],
       },
     },
   ],
 };
+
+export function weatherCodeText(code: number): string {
+  if (code === 0) return 'Açık';
+  if (code <= 2) return 'Az Bulutlu';
+  if (code === 3) return 'Kapalı';
+  if (code <= 48) return 'Sisli';
+  if (code <= 57) return 'Çiseleme';
+  if (code <= 67) return 'Yağmurlu';
+  if (code <= 77) return 'Kar Yağışlı';
+  if (code <= 82) return 'Sağanak';
+  if (code >= 95) return 'Gök Gürültülü';
+  return 'Değişken';
+}

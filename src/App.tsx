@@ -1,53 +1,47 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Activity,
-  Bell,
-  Cable,
-  CloudRain,
+  Calendar,
   Command,
-  Compass,
-  Flame,
-  Grid2x2,
-  Moon,
-  Mountain,
-  Orbit,
   Pause,
-  Plane,
   Play,
-  Radio,
   RefreshCw,
+  Ruler,
   Search,
-  Settings,
-  Shield,
-  Ship,
-  Sparkles,
-  Tv,
-  Video,
-  Waves,
+  X,
 } from 'lucide-react';
 import type {
   AlertRule,
   ApiKeysConfig,
   DisasterItem,
+  DiscoveryPin,
   EarthquakeItem,
+  FireballItem,
   FireHotspot,
   FlightItem,
   KiwiSdrNode,
   LayerState,
   LiveCamera,
+  OsmPoi,
   PlaceInfo,
+  RadioStation,
   RainViewerMeta,
+  RocketLaunch,
   SatelliteLive,
   SatelliteTle,
   ShipItem,
   SpaceWeather,
+  TorRelay,
 } from './types';
 import { api } from './api';
 import { DEFAULT_CAMERAS, QUICK_CITIES } from './cameras';
-import { propagateSatellites } from './geo';
+import { haversineKm, propagateSatellites } from './geo';
 import { sound } from './sound';
 import { GlobeMap } from './components/GlobeMap';
-import { RegionDrawer } from './components/RegionDrawer';
+import { RegionDrawer, type DrawerPrimaryTab, type MediaSubTab } from './components/RegionDrawer';
+import { FloatingDock } from './components/FloatingDock';
+import { MiniRadioBar } from './components/MiniRadioBar';
+import { WikiPulseBar } from './components/WikiPulseBar';
+import { DiscoveryModal } from './components/DiscoveryModal';
 import { MultiCamWall } from './components/MultiCamWall';
 import { AlertModal } from './components/AlertModal';
 import { CommandPalette, type PaletteAction } from './components/CommandPalette';
@@ -66,24 +60,36 @@ const DEFAULT_CONFIG: ApiKeysConfig = {
   soundEnabled: true,
 };
 
+function yesterdayIso(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
 export function App() {
   // Live Feed States
   const [earthquakes, setEarthquakes] = useState<EarthquakeItem[]>([]);
+  const [selectedEq, setSelectedEq] = useState<EarthquakeItem | null>(null);
   const [disasters, setDisasters] = useState<DisasterItem[]>([]);
   const [flights, setFlights] = useState<FlightItem[]>([]);
   const [militaryFlights, setMilitaryFlights] = useState<FlightItem[]>([]);
   const [satTles, setSatTles] = useState<SatelliteTle[]>([]);
   const [satellites, setSatellites] = useState<SatelliteLive[]>([]);
   const [selectedSat, setSelectedSat] = useState<SatelliteLive | null>(null);
+  const [rockets, setRockets] = useState<RocketLaunch[]>([]);
+  const [fireballs, setFireballs] = useState<FireballItem[]>([]);
+  const [torRelays, setTorRelays] = useState<TorRelay[]>([]);
   const [kiwisdr, setKiwisdr] = useState<KiwiSdrNode[]>([]);
   const [rainMeta, setRainMeta] = useState<RainViewerMeta | null>(null);
   const [radarIdx, setRadarIdx] = useState(0);
   const [radarPlaying, setRadarPlaying] = useState(false);
+  const [nasaGibsDate, setNasaGibsDate] = useState(yesterdayIso);
   const [spaceWeather, setSpaceWeather] = useState<SpaceWeather | null>(null);
   const [ships, setShips] = useState<ShipItem[]>([]);
   const [fires, setFires] = useState<FireHotspot[]>([]);
+  const [osmPois, setOsmPois] = useState<OsmPoi[]>([]);
 
-  // User Persisted States
+  // Persisted User States
   const [customCameras, setCustomCameras] = useState<LiveCamera[]>(() => {
     try {
       const saved = localStorage.getItem('maotun_custom_cameras_v2');
@@ -94,10 +100,15 @@ export function App() {
   });
   const [liveCameras, setLiveCameras] = useState<LiveCamera[]>(DEFAULT_CAMERAS);
   const cameras = useMemo(() => [...customCameras, ...liveCameras], [customCameras, liveCameras]);
-  const [requestedTab, setRequestedTab] = useState<{
-    tab: 'cams' | 'radio' | 'sdr' | 'tv' | 'signals' | 'news' | 'brief';
-    ts: number;
-  } | null>(null);
+
+  const [discoveries, setDiscoveries] = useState<DiscoveryPin[]>(() => {
+    try {
+      const saved = localStorage.getItem('maotun_discoveries_v3');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
   const [rules, setRules] = useState<AlertRule[]>(() => {
     try {
@@ -126,25 +137,45 @@ export function App() {
     flights: true,
     military: true,
     satellites: true,
+    rockets: true,
+    fireballs: false,
     kiwisdr: false,
     radar: false,
     aurora: false,
     cables: true,
+    tor: false,
+    railways: false,
     ships: false,
     fires: false,
     cameras: true,
     terminator: true,
     terrain: false,
+    nasaGibs: false,
+    discoveries: true,
   });
 
-  // UI & Navigation States
+  // Persistent Background Radio Player (keeps playing when drawer closes!)
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [playingRadio, setPlayingRadio] = useState<RadioStation | null>(null);
+  const [radioPaused, setRadioPaused] = useState(false);
+
+  // UI States
   const [selectedPlace, setSelectedPlace] = useState<PlaceInfo | null>(null);
+  const [requestedTab, setRequestedTab] = useState<{
+    primary: DrawerPrimaryTab;
+    mediaSub?: MediaSubTab;
+    ts: number;
+  } | null>(null);
   const [activeCamera, setActiveCamera] = useState<LiveCamera | null>(null);
   const [flyTarget, setFlyTarget] = useState<{ lat: number; lon: number; zoom?: number; ts: number } | null>(null);
   const [wallOpen, setWallOpen] = useState(false);
   const [alertsOpen, setAlertsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [discoveryOpen, setDiscoveryOpen] = useState(false);
+  const [wikiPulseOpen, setWikiPulseOpen] = useState(false);
+  const [measureMode, setMeasureMode] = useState(false);
+  const [measurePts, setMeasurePts] = useState<{ lat: number; lon: number }[]>([]);
   const [autopilot, setAutopilot] = useState(false);
   const [autopilotLabel, setAutopilotLabel] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -152,18 +183,15 @@ export function App() {
 
   const [searchText, setSearchText] = useState('');
   const [searchResults, setSearchResults] = useState<PlaceInfo[]>([]);
-  const [cursor, setCursor] = useState({ lat: 38.8, lon: 32.5, zoom: 3.1 });
+  const [cursor, setCursor] = useState({ lat: 38.8, lon: 32.5, zoom: 3.15 });
   const [clock, setClock] = useState(() => new Date());
-
   const autopilotIdxRef = useRef(0);
 
-  // Live Clock (1s)
   useEffect(() => {
     const id = setInterval(() => setClock(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
 
-  // Global Ctrl+K shortcut
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
@@ -176,11 +204,10 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Refresh All Core Feeds
   const refreshAll = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [eq, dis, flt, mil, tles, sdr, rv, sw, shp, liveCams] = await Promise.all([
+      const [eq, dis, flt, mil, tles, sdr, rv, sw, shp, liveCams, rck, fb, tor] = await Promise.all([
         api.getEarthquakes().catch(() => []),
         api.getDisasters().catch(() => []),
         api.getFlights(39.0, 34.0, 250).catch(() => []),
@@ -191,8 +218,10 @@ export function App() {
         api.getSpaceWeather().catch(() => null),
         api.getShips().catch(() => []),
         api.getLiveCameras().catch(() => []),
+        api.getRockets().catch(() => []),
+        api.getFireballs().catch(() => []),
+        api.getTorRelays().catch(() => []),
       ]);
-      if (liveCams.length > 0) setLiveCameras(liveCams);
       setEarthquakes(eq);
       setDisasters(dis);
       setFlights(flt);
@@ -206,18 +235,19 @@ export function App() {
       }
       setSpaceWeather(sw);
       setShips((prev) => (prev.some((s) => s.source === 'AISSTREAM') ? prev : shp));
+      if (liveCams.length > 0) setLiveCameras(liveCams);
+      setRockets(rck);
+      setFireballs(fb);
+      setTorRelays(tor);
 
       if (config.firmsKey.trim()) {
         api.getFirmsFires(config.firmsKey).then(setFires).catch(() => {});
       }
 
-      // Evaluate alert rules
       for (const r of rules) {
         if (!r.enabled) continue;
         const hit = eq.find(
-          (e) =>
-            e.mag >= r.minMag &&
-            e.title.toUpperCase().includes(r.keyword.toUpperCase())
+          (e) => e.mag >= r.minMag && e.title.toUpperCase().includes(r.keyword.toUpperCase())
         );
         if (hit) {
           setAlertBanner(`${r.label}: M${hit.mag.toFixed(1)} — ${hit.title}`);
@@ -232,29 +262,25 @@ export function App() {
 
   useEffect(() => {
     refreshAll();
-    const id = setInterval(refreshAll, 90_000);
+    const id = setInterval(refreshAll, 120_000);
     return () => clearInterval(id);
   }, [refreshAll]);
 
-  // Real-time 60-second SGP4 Satellite Tick (every 3s for smooth orbital motion)
+  // Smooth SGP4 Satellite Tick
   useEffect(() => {
     if (satTles.length === 0) return;
-    const id = setInterval(() => {
-      setSatellites(propagateSatellites(satTles));
-    }, 3000);
+    const id = setInterval(() => setSatellites(propagateSatellites(satTles)), 3000);
     return () => clearInterval(id);
   }, [satTles]);
 
-  // RainViewer Radar Playback Animation
+  // Radar Playback
   useEffect(() => {
     if (!radarPlaying || !rainMeta || rainMeta.frames.length === 0) return;
-    const id = setInterval(() => {
-      setRadarIdx((i) => (i + 1) % rainMeta.frames.length);
-    }, 850);
+    const id = setInterval(() => setRadarIdx((i) => (i + 1) % rainMeta.frames.length), 850);
     return () => clearInterval(id);
   }, [radarPlaying, rainMeta]);
 
-  // Optional AISstream.io Live Global Maritime WebSocket
+  // Optional AISstream WebSocket
   useEffect(() => {
     const key = config.aisstreamKey.trim();
     if (!key || !layers.ships) return;
@@ -266,8 +292,8 @@ export function App() {
           JSON.stringify({
             APIKey: key,
             BoundingBoxes: [
-              [[30.0, 20.0], [46.0, 42.0]], // Turkey, Med, Black Sea, Aegean, Suez
-              [[48.0, -6.0], [60.0, 15.0]], // English Channel & North Sea
+              [[30.0, 20.0], [46.0, 42.0]],
+              [[48.0, -6.0], [60.0, 15.0]],
             ],
             FilterMessageTypes: ['PositionReport'],
           })
@@ -282,120 +308,86 @@ export function App() {
             const mmsi = String(meta.MMSI);
             const item: ShipItem = {
               mmsi,
-              name: (meta.ShipName || `VESSEL ${mmsi}`).trim(),
+              name: (meta.ShipName || `GEMİ ${mmsi}`).trim(),
               lat: pos.Latitude,
               lon: pos.Longitude,
               sog: pos.Sog || 0,
               cog: pos.Cog || 0,
               source: 'AISSTREAM',
             };
-            setShips((prev) => {
-              const filtered = prev.filter((s) => s.mmsi !== mmsi);
-              return [item, ...filtered].slice(0, 180);
-            });
+            setShips((prev) => [item, ...prev.filter((s) => s.mmsi !== mmsi)].slice(0, 180));
           }
         } catch {
-          // ignore malformed packet
+          // ignore
         }
       };
     } catch {
-      // ignore ws error
+      // ignore
     }
-    return () => {
-      ws?.close();
-    };
+    return () => ws?.close();
   }, [config.aisstreamKey, layers.ships]);
 
-  // Cinematic Autopilot Showcase Tour (2nd Monitor Mode)
+  // Autopilot Showcase Tour
   useEffect(() => {
     if (!autopilot) {
       setAutopilotLabel('');
       return;
     }
-    const stops: { label: string; lat: number; lon: number; zoom: number }[] = [
-      { label: 'İSTANBUL BOĞAZI // TR', lat: 41.02, lon: 28.98, zoom: 7.2 },
-      { label: 'HATAY & DOĞU ANADOLU FAYI // TR', lat: 36.2, lon: 36.16, zoom: 7.0 },
-      { label: 'TOKYO SHIBUYA // JP', lat: 35.67, lon: 139.65, zoom: 7.4 },
-      { label: 'NEW YORK MANHATTAN // US', lat: 40.71, lon: -74.0, zoom: 7.2 },
-      { label: 'REYKJAVIK AURORA KUŞAĞI // IS', lat: 64.14, lon: -21.94, zoom: 5.2 },
+    const stops = [
+      { label: 'İstanbul Boğazı', lat: 41.02, lon: 28.98, zoom: 7.4 },
+      { label: 'Hatay & Doğu Akdeniz', lat: 36.2, lon: 36.16, zoom: 7.1 },
+      { label: 'Tokyo — Shibuya', lat: 35.67, lon: 139.65, zoom: 7.5 },
+      { label: 'New York — Manhattan', lat: 40.71, lon: -74.0, zoom: 7.3 },
+      { label: 'Reykjavik Aurora Kuşağı', lat: 64.14, lon: -21.94, zoom: 5.4 },
     ];
     const iss = satellites.find((s) => s.id === '25544' || s.name.includes('ISS'));
-    if (iss) {
-      stops.splice(1, 0, {
-        label: `ISS YÖRÜNGE TAKİBİ (${iss.alt_km.toFixed(0)} KM)`,
-        lat: iss.lat,
-        lon: iss.lon,
-        zoom: 3.6,
-      });
-    }
-    if (earthquakes[0]) {
-      stops.splice(2, 0, {
-        label: `SON DEPREM M${earthquakes[0].mag.toFixed(1)} // ${earthquakes[0].title}`,
-        lat: earthquakes[0].lat,
-        lon: earthquakes[0].lon,
-        zoom: 6.4,
-      });
-    }
-
-    const goNext = () => {
+    if (iss) stops.splice(1, 0, { label: `ISS Yörünge (${iss.alt_km.toFixed(0)} km)`, lat: iss.lat, lon: iss.lon, zoom: 3.8 });
+    const go = () => {
       const st = stops[autopilotIdxRef.current % stops.length];
       autopilotIdxRef.current += 1;
       setAutopilotLabel(st.label);
       setFlyTarget({ lat: st.lat, lon: st.lon, zoom: st.zoom, ts: Date.now() });
     };
-
-    goNext();
-    const id = setInterval(goNext, 9500);
+    go();
+    const id = setInterval(go, 9500);
     return () => clearInterval(id);
   }, [autopilot]);
 
+  const handlePlayRadio = (st: RadioStation) => {
+    sound.playClick();
+    if (playingRadio?.id === st.id) {
+      if (audioRef.current) {
+        if (radioPaused) {
+          audioRef.current.play().catch(() => {});
+          setRadioPaused(false);
+        } else {
+          audioRef.current.pause();
+          setRadioPaused(true);
+        }
+      }
+      return;
+    }
+    setPlayingRadio(st);
+    setRadioPaused(false);
+    setTimeout(() => {
+      if (audioRef.current) {
+        audioRef.current.src = st.stream_url;
+        audioRef.current.play().catch(() => {});
+      }
+    }, 30);
+  };
+
   const handleSelectCoord = async (lat: number, lon: number) => {
+    if (measureMode) {
+      setMeasurePts((prev) => (prev.length >= 2 ? [{ lat, lon }] : [...prev, { lat, lon }]));
+      return;
+    }
     const place = await api.reverseGeocode(lat, lon);
     setSelectedPlace(place);
     api.getFlights(lat, lon, 200).then(setFlights).catch(() => {});
   };
 
-  const handleQuickCity = (c: (typeof QUICK_CITIES)[number]) => {
-    sound.playClick();
-    setFlyTarget({ lat: c.lat, lon: c.lon, zoom: 7.5, ts: Date.now() });
-    setSelectedPlace({
-      display_name: `${c.name}, ${c.country}`,
-      city: c.name,
-      country: c.country,
-      country_code: c.country_code,
-      lat: c.lat,
-      lon: c.lon,
-    });
-    api.getFlights(c.lat, c.lon, 200).then(setFlights).catch(() => {});
-  };
-
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!searchText.trim()) return;
-    sound.playClick();
-    const res = await api.searchPlace(searchText.trim()).catch(() => []);
-    setSearchResults(res);
-  };
-
-  const toggleLayer = (k: keyof LayerState) => {
-    setLayers((prev) => {
-      const next = !prev[k];
-      sound.playToggle(next);
-      return { ...prev, [k]: next };
-    });
-  };
-
-  const saveConfig = (next: ApiKeysConfig) => {
-    setConfig(next);
-    localStorage.setItem('maotun_config_v2', JSON.stringify(next));
-  };
-
-  const saveCameras = (next: LiveCamera[]) => {
-    setCustomCameras(next);
-    localStorage.setItem('maotun_custom_cameras_v2', JSON.stringify(next));
-  };
-
-  const openDrawerTab = (tab: 'cams' | 'radio' | 'sdr' | 'tv' | 'signals' | 'news' | 'brief') => {
+  const openDrawerTo = (primary: DrawerPrimaryTab, mediaSub?: MediaSubTab) => {
     sound.playClick();
     if (!selectedPlace) {
       setSelectedPlace({
@@ -407,12 +399,24 @@ export function App() {
         lon: 28.9784,
       });
     }
-    setRequestedTab({ tab, ts: Date.now() });
+    setRequestedTab({ primary, mediaSub, ts: Date.now() });
   };
 
-  const saveRules = (next: AlertRule[]) => {
-    setRules(next);
-    localStorage.setItem('maotun_rules', JSON.stringify(next));
+  const toggleLayer = (k: keyof LayerState) => {
+    setLayers((prev) => {
+      const next = !prev[k];
+      sound.playToggle(next);
+      return { ...prev, [k]: next };
+    });
+  };
+
+  const saveDiscoveries = (next: DiscoveryPin[]) => {
+    setDiscoveries(next);
+    try {
+      localStorage.setItem('maotun_discoveries_v3', JSON.stringify(next));
+    } catch {
+      // storage quota guard
+    }
   };
 
   const radarTileUrl = useMemo(() => {
@@ -421,20 +425,20 @@ export function App() {
     return `${rainMeta.host}${f.path}/256/{z}/{x}/{y}/6/1_1.png`;
   }, [rainMeta, radarIdx]);
 
-  const radarTimeLabel = useMemo(() => {
-    if (!rainMeta || !rainMeta.frames[radarIdx]) return '--:--';
-    const d = new Date(rainMeta.frames[radarIdx].time * 1000);
-    return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-  }, [rainMeta, radarIdx]);
+  const measureInfo = useMemo(() => {
+    if (measurePts.length !== 2) return null;
+    const km = haversineKm(measurePts[0].lat, measurePts[0].lon, measurePts[1].lat, measurePts[1].lon);
+    const flightHr = km / 840;
+    const tzDiff = Math.round((measurePts[1].lon - measurePts[0].lon) / 15);
+    return { km, flightHr, tzDiff };
+  }, [measurePts]);
 
-  // Ctrl+K Command Palette Actions
   const paletteActions: PaletteAction[] = useMemo(() => {
     const list: PaletteAction[] = [
       {
         id: 'act-iss',
         group: 'UYDU',
-        label: 'ISS (Uluslararası Uzay İstasyonu) Kilitle & Yörünge Çiz',
-        hint: 'SGP4',
+        label: 'ISS Kilitle & 90 dk Yörünge Çiz',
         run: () => {
           const iss = satellites.find((s) => s.id === '25544' || s.name.includes('ISS'));
           if (iss) {
@@ -443,112 +447,75 @@ export function App() {
           }
         },
       },
-      {
-        id: 'act-autopilot',
-        group: 'MOD',
-        label: autopilot ? 'Otopilot Vitrin Turunu Durdur' : 'Otopilot Sinematik Vitrin Turunu Başlat',
-        hint: '2. EKRAN',
-        run: () => setAutopilot((a) => !a),
-      },
-      {
-        id: 'act-wall',
-        group: 'OPTİK',
-        label: '6-Şehir Çoklu Kamera Duvarını Aç',
-        run: () => setWallOpen(true),
-      },
-      {
-        id: 'act-settings',
-        group: 'SİSTEM',
-        label: 'Ayarlar, Opsiyonel Anahtarlar & Kamera JSON Yedekleme',
-        run: () => setSettingsOpen(true),
-      },
-      {
-        id: 'act-alerts',
-        group: 'SİSTEM',
-        label: 'Bölgesel Sismik Alarm Kurallarını Düzenle',
-        run: () => setAlertsOpen(true),
-      },
+      { id: 'act-disc', group: 'KEŞİF', label: 'Rastgele Mekân Avı & Fotoğraf Pasaportu', run: () => setDiscoveryOpen(true) },
+      { id: 'act-wall', group: 'MEDYA', label: '6-Şehir Çoklu Kamera Duvarı', run: () => setWallOpen(true) },
+      { id: 'act-radio', group: 'MEDYA', label: 'Canlı Yerel Radyolar (FFT)', run: () => openDrawerTo('media', 'radio') },
+      { id: 'act-tv', group: 'MEDYA', label: 'Canlı TV Kanalları (IPTV)', run: () => openDrawerTo('media', 'tv') },
+      { id: 'act-gibs', group: 'UYDU', label: `NASA GIBS Günlük Uydu Fotoğrafı (${layers.nasaGibs ? 'Kapat' : 'Aç'})`, run: () => toggleLayer('nasaGibs') },
+      { id: 'act-rail', group: 'ŞEHİR', label: `Global/TR Metro & Raylı Sistem (${layers.railways ? 'Kapat' : 'Aç'})`, run: () => toggleLayer('railways') },
+      { id: 'act-wiki', group: 'NABIZ', label: 'Canlı Vikipedi Düzenleme Nabzı', run: () => setWikiPulseOpen((v) => !v) },
+      { id: 'act-measure', group: 'ARAÇ', label: '2 Nokta 3D Mesafe & Uçuş Ölçeri', run: () => { setMeasureMode((v) => !v); setMeasurePts([]); } },
     ];
-
     QUICK_CITIES.forEach((c) => {
       list.push({
         id: `city-${c.name}`,
         group: 'ŞEHİR',
         label: `${c.name}, ${c.country}`,
-        hint: `${c.lat.toFixed(1)}°, ${c.lon.toFixed(1)}°`,
-        run: () => handleQuickCity(c),
+        run: () => {
+          setFlyTarget({ lat: c.lat, lon: c.lon, zoom: 7.5, ts: Date.now() });
+          setSelectedPlace({
+            display_name: `${c.name}, ${c.country}`,
+            city: c.name,
+            country: c.country,
+            country_code: c.country_code,
+            lat: c.lat,
+            lon: c.lon,
+          });
+        },
       });
     });
-
-    const layerDefs: [keyof LayerState, string][] = [
-      ['radar', 'RainViewer Canlı Yağış Radarı'],
-      ['aurora', 'NOAA Canlı Aurora Ovali'],
-      ['kiwisdr', 'KiwiSDR Kısa Dalga Alıcıları'],
-      ['military', 'Askerî & Özel (MIL/LADD/PIA) Uçuşlar'],
-      ['cables', 'Denizaltı Fiber Optik Kablolar'],
-      ['faults', 'Türkiye Aktif Fay Hatları (KAF/DAF)'],
-      ['terrain', '3D Arazi Kabartması (DEM)'],
-      ['terminator', 'Gerçek Zamanlı Gece/Gündüz Çizgisi'],
-      ['ships', 'Canlı AIS Deniz Trafiği'],
-      ['fires', 'NASA FIRMS Termal Yangınlar'],
-    ];
-    layerDefs.forEach(([k, label]) => {
-      list.push({
-        id: `lyr-${k}`,
-        group: 'KATMAN',
-        label: `${label} (${layers[k] ? 'KAPAT' : 'AÇ'})`,
-        run: () => toggleLayer(k),
-      });
-    });
-
     return list;
-  }, [satellites, autopilot, layers]);
+  }, [satellites, layers]);
 
-  const layerRack: {
-    key: keyof LayerState;
-    label: string;
-    count?: number;
-    color: string;
-    icon: React.ReactNode;
-  }[] = [
-    { key: 'earthquakes', label: 'DEPREM', count: earthquakes.length, color: '#FF4D00', icon: <Activity className="w-3.5 h-3.5" /> },
-    { key: 'faults', label: 'FAY HAT', color: '#FF2A3B', icon: <Activity className="w-3.5 h-3.5" /> },
-    { key: 'disasters', label: 'AFET', count: disasters.length, color: '#FF7A00', icon: <Flame className="w-3.5 h-3.5" /> },
-    { key: 'flights', label: 'SİVİL', count: flights.length, color: '#00D4FF', icon: <Plane className="w-3.5 h-3.5" /> },
-    { key: 'military', label: 'ASKERÎ', count: militaryFlights.length, color: '#FFB800', icon: <Shield className="w-3.5 h-3.5" /> },
-    { key: 'satellites', label: 'UYDU', count: satellites.length, color: '#ECEEF2', icon: <Orbit className="w-3.5 h-3.5" /> },
-    { key: 'kiwisdr', label: 'KIWISDR', count: kiwisdr.length, color: '#C084FC', icon: <Waves className="w-3.5 h-3.5" /> },
-    { key: 'radar', label: 'RADAR', color: '#38BDF8', icon: <CloudRain className="w-3.5 h-3.5" /> },
-    { key: 'aurora', label: 'AURORA', color: '#00E58A', icon: <Sparkles className="w-3.5 h-3.5" /> },
-    { key: 'cables', label: 'FİBER', color: '#00D4FF', icon: <Cable className="w-3.5 h-3.5" /> },
-    { key: 'ships', label: 'GEMİ', count: ships.length, color: '#38BDF8', icon: <Ship className="w-3.5 h-3.5" /> },
-    { key: 'fires', label: 'YANGIN', count: fires.length, color: '#FF3B00', icon: <Flame className="w-3.5 h-3.5" /> },
-    { key: 'cameras', label: 'KAMERA', count: cameras.length, color: '#00E58A', icon: <Video className="w-3.5 h-3.5" /> },
-    { key: 'terminator', label: 'GECE', color: '#FF4D00', icon: <Moon className="w-3.5 h-3.5" /> },
-    { key: 'terrain', label: '3D ARAZİ', color: '#9BA3B0', icon: <Mountain className="w-3.5 h-3.5" /> },
-  ];
-
-  const utcStr = clock.toISOString().slice(11, 19);
-  const trStr = clock.toLocaleTimeString('tr-TR', { hour12: false });
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!searchText.trim()) return;
+    sound.playClick();
+    const res = await api.searchPlace(searchText.trim()).catch(() => []);
+    setSearchResults(res);
+  };
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-[#08090B]">
-      {/* 3D Interactive World Globe */}
+    <div className="relative w-screen h-screen overflow-hidden bg-[#090B0E]">
+      {/* Global Persistent Radio Audio Element */}
+      <audio ref={audioRef} crossOrigin="anonymous" />
+
+      {/* Full-Bleed 3D Interactive World Globe */}
       <GlobeMap
         earthquakes={earthquakes}
+        selectedEq={selectedEq}
+        onSelectEq={setSelectedEq}
         disasters={disasters}
         flights={flights}
         militaryFlights={militaryFlights}
         satellites={satellites}
         selectedSat={selectedSat}
         onSelectSat={setSelectedSat}
+        rockets={rockets}
+        fireballs={fireballs}
+        torRelays={torRelays}
         kiwisdr={kiwisdr}
         auroraPoints={spaceWeather?.aurora_points ?? []}
         ships={ships}
         fires={fires}
         cameras={cameras}
+        osmPois={osmPois}
+        discoveries={discoveries}
+        measurePts={measurePts}
+        measureMode={measureMode}
         layers={layers}
         radarTileUrl={radarTileUrl}
+        nasaGibsDate={nasaGibsDate}
         flyTarget={flyTarget}
         onSelectCoord={handleSelectCoord}
         onSelectCamera={(cam) => {
@@ -565,324 +532,261 @@ export function App() {
         onCursorMove={(lat, lon, zoom) => setCursor({ lat, lon, zoom })}
       />
 
-      {/* TOP SWISS INSTRUMENT BAR */}
-      <header className="fixed top-0 left-0 right-0 h-[44px] bg-[#0B0C0E]/95 border-b border-[#242830] z-30 flex items-center justify-between px-3 gap-3">
-        {/* Brand + Clocks + Space Weather Kp */}
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="flex items-center gap-2 pr-3 border-r border-[#242830]">
-            <span className="led-dot bg-[#FF4D00] animate-led" />
-            <span className="font-bold text-sm tracking-[0.2em] text-white">MAOTUN</span>
-            <span className="font-mono-tech text-[9px] px-1 py-0.5 border border-[#242830] text-[#7C8492]">
-              2.0
-            </span>
+      {/* SERENE FLOATING TOP BAR (No heavy full-width box chrome!) */}
+      <header className="fixed top-3.5 left-4 right-4 z-30 flex items-center justify-between gap-3 pointer-events-none">
+        {/* Left: Brand & Live Minimal Telemetry */}
+        <div className="atlas-pill rounded-2xl px-3.5 py-2 flex items-center gap-3 pointer-events-auto">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-[#E5A952]" />
+            <span className="font-semibold text-sm tracking-[0.14em] text-white">MAOTUN</span>
           </div>
-
-          <div className="hidden lg:flex items-center gap-3 font-mono-tech text-[10px] text-[#9BA3B0]">
-            <span>
-              UTC <strong className="text-[#ECEEF2]">{utcStr}</strong>
-            </span>
-            <span className="text-[#2E333D]">|</span>
-            <span>
-              TR <strong className="text-[#ECEEF2]">{trStr}</strong>
-            </span>
+          <span className="h-3.5 w-px bg-white/10 hidden md:block" />
+          <div className="hidden md:flex items-center gap-2.5 font-mono-tech text-[11px] text-[#8E95A3]">
+            <span className="text-[#E6E8EC]">{clock.toLocaleTimeString('tr-TR', { hour12: false })}</span>
+            <span>UTC {clock.toISOString().slice(11, 16)}</span>
             {spaceWeather && (
-              <>
-                <span className="text-[#2E333D]">|</span>
-                <span
-                  className={
-                    spaceWeather.kp_index >= 5
-                      ? 'text-[#FF4D00]'
-                      : spaceWeather.kp_index >= 4
-                      ? 'text-[#FFB800]'
-                      : 'text-[#00E58A]'
-                  }
+              <span className={spaceWeather.kp_index >= 5 ? 'text-[#E85D4A]' : 'text-[#4ADE80]'}>
+                Kp {spaceWeather.kp_index.toFixed(1)}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Center: Floating Search Pill */}
+        <div className="relative flex-1 max-w-md pointer-events-auto">
+          <form onSubmit={handleSearch} className="atlas-pill rounded-2xl flex items-center px-3 py-1.5 gap-2 focus-within:border-[#E5A952]/60">
+            <Search className="w-3.5 h-3.5 text-[#8E95A3] shrink-0" />
+            <input
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder="İlçe, şehir veya ülke ara..."
+              className="flex-1 bg-transparent text-xs text-[#E6E8EC] placeholder-[#68707F] focus:outline-none"
+            />
+            <button
+              type="button"
+              onClick={() => { sound.playClick(); setPaletteOpen(true); }}
+              className="px-2 py-0.5 rounded-lg bg-white/[0.06] font-mono-tech text-[10px] text-[#8E95A3] hover:text-[#E5A952] flex items-center gap-1 cursor-pointer"
+              title="Komut Paleti (Ctrl+K)"
+            >
+              <Command className="w-2.5 h-2.5" /> K
+            </button>
+          </form>
+
+          {searchResults.length > 0 && (
+            <div className="absolute top-full left-0 right-0 mt-1.5 atlas-glass rounded-2xl overflow-hidden divide-y divide-white/[0.06]">
+              {searchResults.map((p, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    sound.playClick();
+                    setSelectedPlace(p);
+                    setFlyTarget({ lat: p.lat, lon: p.lon, zoom: 9.2, ts: Date.now() });
+                    setSearchResults([]);
+                    setSearchText('');
+                  }}
+                  className="w-full text-left px-3.5 py-2.5 hover:bg-white/[0.06] transition cursor-pointer"
                 >
-                  KP {spaceWeather.kp_index.toFixed(1)} ({spaceWeather.storm_level})
-                </span>
-              </>
-            )}
-          </div>
+                  <div className="text-xs font-medium text-[#E6E8EC]">{p.city}</div>
+                  <div className="text-[11px] text-[#8E95A3] truncate">{p.display_name}</div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Center Search + Ctrl+K + Quick Cities */}
-        <div className="flex items-center gap-2 flex-1 max-w-xl">
-          <div className="relative flex-1">
-            <form onSubmit={handleSearch} className="flex items-center bg-[#08090B] border border-[#242830] focus-within:border-[#FF4D00]">
-              <Search className="w-3.5 h-3.5 text-[#5E6673] ml-2.5 shrink-0" />
-              <input
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                placeholder="Şehir, koordinat veya ülke ara..."
-                className="flex-1 bg-transparent px-2 py-1.5 font-mono-tech text-[11px] text-[#ECEEF2] placeholder-[#555C69] focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  sound.playClick();
-                  setPaletteOpen(true);
-                }}
-                className="px-2 py-1 border-l border-[#242830] font-mono-tech text-[9px] text-[#7C8492] hover:text-[#FF4D00] flex items-center gap-1 cursor-pointer"
-                title="Komut Paleti (Ctrl+K)"
-              >
-                <Command className="w-2.5 h-2.5" /> K
-              </button>
-            </form>
-
-            {searchResults.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1 inst-panel divide-y divide-[#1D2129] z-50">
-                {searchResults.map((p, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => {
-                      sound.playClick();
-                      setSelectedPlace(p);
-                      setFlyTarget({ lat: p.lat, lon: p.lon, zoom: 8.5, ts: Date.now() });
-                      setSearchResults([]);
-                      setSearchText('');
-                      api.getFlights(p.lat, p.lon, 200).then(setFlights).catch(() => {});
-                    }}
-                    className="w-full text-left px-3 py-2 hover:bg-[#161921] transition cursor-pointer"
-                  >
-                    <div className="text-xs font-medium text-[#ECEEF2]">{p.city}</div>
-                    <div className="font-mono-tech text-[10px] text-[#7C8492] truncate">
-                      {p.display_name}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="hidden xl:flex items-center gap-1">
-            {QUICK_CITIES.slice(0, 5).map((c) => (
-              <button
-                key={c.name}
-                onClick={() => handleQuickCity(c)}
-                className="inst-btn px-2 py-1 text-[10px]"
-              >
-                {c.name.slice(0, 3).toUpperCase()}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Right Controls */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        {/* Right: Minimal Coordinate Readout & Refresh */}
+        <div className="atlas-pill rounded-2xl px-3 py-1.5 flex items-center gap-2.5 pointer-events-auto">
+          <span className="hidden lg:inline font-mono-tech text-[11px] text-[#8E95A3]">
+            {cursor.lat.toFixed(2)}°{cursor.lat >= 0 ? 'N' : 'S'}, {Math.abs(cursor.lon).toFixed(2)}°{cursor.lon >= 0 ? 'E' : 'W'}
+          </span>
           <button
-            onClick={() => openDrawerTab('radio')}
-            className="inst-btn px-2.5 py-1.5"
-            title="Canlı Yerel Radyolar + FFT Spektrum"
+            onClick={() => { sound.playClick(); refreshAll(); }}
+            className="atlas-btn p-1"
+            title="Canlı verileri yenile"
           >
-            <Radio className="w-3.5 h-3.5 text-[#00D4FF]" />
-            <span className="hidden md:inline">RADYO</span>
-          </button>
-          <button
-            onClick={() => openDrawerTab('tv')}
-            className="inst-btn px-2.5 py-1.5"
-            title="Canlı TV Kanalları (IPTV HLS)"
-          >
-            <Tv className="w-3.5 h-3.5 text-[#FF4D00]" />
-            <span className="hidden md:inline">TV</span>
-          </button>
-          <button
-            onClick={() => {
-              sound.playToggle(!autopilot);
-              setAutopilot((a) => !a);
-            }}
-            className={`inst-btn px-2.5 py-1.5 ${autopilot ? 'inst-btn-active' : ''}`}
-            title="Sinematik Otopilot Vitrin Turu (2. Ekran)"
-          >
-            <Compass className={`w-3.5 h-3.5 ${autopilot ? 'text-[#FF4D00] animate-spin' : ''}`} />
-            <span className="hidden md:inline">TUR</span>
-          </button>
-          <button
-            onClick={() => {
-              sound.playClick();
-              setWallOpen(true);
-            }}
-            className="inst-btn px-2.5 py-1.5"
-            title="Çoklu Kamera Duvarı"
-          >
-            <Grid2x2 className="w-3.5 h-3.5 text-[#00E58A]" />
-            <span className="hidden md:inline">DUVAR</span>
-          </button>
-          <button
-            onClick={() => {
-              sound.playClick();
-              setAlertsOpen(true);
-            }}
-            className="inst-btn px-2 py-1.5"
-            title="Sismik Alarm Kuralları"
-          >
-            <Bell className="w-3.5 h-3.5 text-[#FFB800]" />
-          </button>
-          <button
-            onClick={() => {
-              sound.playClick();
-              setSettingsOpen(true);
-            }}
-            className="inst-btn px-2 py-1.5"
-            title="Ayarlar & Opsiyonel Anahtarlar"
-          >
-            <Settings className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => {
-              sound.playClick();
-              refreshAll();
-            }}
-            className="inst-btn px-2 py-1.5"
-            title="Canlı Akışları Yenile"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-[#FF4D00]' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-[#E5A952]' : ''}`} />
           </button>
         </div>
       </header>
 
-      {/* Alert or Autopilot Banner */}
-      {(alertBanner || autopilotLabel) && (
-        <div className="fixed top-[52px] left-1/2 -translate-x-1/2 z-30 inst-panel border-l-2 border-l-[#FF4D00] px-3.5 py-1.5 flex items-center gap-3">
-          <span className="led-dot bg-[#FF4D00] animate-led" />
-          <span className="font-mono-tech text-[11px] text-[#ECEEF2]">
-            {alertBanner || `OTOPİLOT // ${autopilotLabel}`}
-          </span>
-          {alertBanner && (
-            <button
-              onClick={() => setAlertBanner(null)}
-              className="font-mono-tech text-[10px] text-[#7C8492] hover:text-white cursor-pointer"
-            >
-              [X]
-            </button>
-          )}
-        </div>
-      )}
+      {/* Active Mode / Alert / Measurement / NASA GIBS Date Floating Pills */}
+      <div className="fixed top-16 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-2 pointer-events-none">
+        {(alertBanner || autopilotLabel) && (
+          <div className="atlas-glass rounded-full px-4 py-1.5 flex items-center gap-2.5 pointer-events-auto text-xs">
+            <span className="w-2 h-2 rounded-full bg-[#E85D4A] animate-pulse" />
+            <span>{alertBanner || `Otopilot: ${autopilotLabel}`}</span>
+            {alertBanner && (
+              <button onClick={() => setAlertBanner(null)} className="text-[#8E95A3] hover:text-white cursor-pointer">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        )}
 
-      {/* LEFT VERTICAL SWISS INSTRUMENT LAYER RACK */}
-      <nav className="fixed top-[54px] left-3 bottom-10 w-[134px] z-20 flex flex-col gap-1 overflow-y-auto pr-0.5 pointer-events-auto">
-        <div className="px-2 py-1 bg-[#0B0C0E]/90 border border-[#242830] font-mono-tech text-[9px] text-[#7C8492] tracking-widest">
-          KATMAN ANAHTARI
-        </div>
-        {layerRack.map((item) => {
-          const on = layers[item.key];
-          return (
-            <button
-              key={item.key}
-              onClick={() => toggleLayer(item.key)}
-              className={`px-2 py-1.5 border text-left flex items-center justify-between transition cursor-pointer ${
-                on
-                  ? 'bg-[#12151B]/95 border-[#3A414E] text-[#ECEEF2]'
-                  : 'bg-[#0B0C0E]/75 border-[#1C1F26] text-[#5B6370] hover:text-[#9BA3B0]'
-              }`}
-            >
-              <span className="flex items-center gap-1.5 font-mono-tech text-[10px]">
-                <span
-                  className="led-dot"
-                  style={{ backgroundColor: on ? item.color : '#262A33' }}
-                />
-                {item.label}
+        {measureMode && (
+          <div className="atlas-glass rounded-full px-4 py-1.5 flex items-center gap-3 pointer-events-auto text-xs">
+            <Ruler className="w-3.5 h-3.5 text-[#E5A952]" />
+            {measureInfo ? (
+              <span className="font-mono-tech">
+                {measureInfo.km.toFixed(0)} km • Uçuş ~{measureInfo.flightHr.toFixed(1)} sa • Saat farkı {measureInfo.tzDiff >= 0 ? `+${measureInfo.tzDiff}` : measureInfo.tzDiff}s
               </span>
-              {typeof item.count === 'number' && (
-                <span className="font-mono-tech text-[9px] text-[#7C8492]">{item.count}</span>
-              )}
+            ) : (
+              <span>Haritada {measurePts.length === 0 ? '1.' : '2.'} noktaya tıklayın</span>
+            )}
+            <button
+              onClick={() => { setMeasureMode(false); setMeasurePts([]); }}
+              className="text-[#8E95A3] hover:text-white cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
             </button>
-          );
-        })}
-      </nav>
+          </div>
+        )}
 
-      {/* RAINVIEWER LIVE RADAR TIME-SCRUB BAR */}
-      {layers.radar && rainMeta && rainMeta.frames.length > 0 && (
-        <div className="fixed bottom-11 left-1/2 -translate-x-1/2 z-30 inst-panel reticle-corner px-3 py-2 flex items-center gap-3 w-[360px] max-w-[90vw]">
-          <button
-            onClick={() => {
-              sound.playClick();
-              setRadarPlaying((p) => !p);
-            }}
-            className="inst-btn inst-btn-orange p-1.5"
-          >
-            {radarPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-          </button>
-          <div className="flex-1">
-            <div className="flex items-center justify-between font-mono-tech text-[9px] text-[#9BA3B0] mb-1">
-              <span>RAINVIEWER YAĞIŞ RADARI</span>
-              <span className="text-[#38BDF8]">{radarTimeLabel}</span>
-            </div>
+        {layers.nasaGibs && (
+          <div className="atlas-glass rounded-full px-3.5 py-1.5 flex items-center gap-2 pointer-events-auto text-xs">
+            <Calendar className="w-3.5 h-3.5 text-[#4ADE80]" />
+            <span className="text-[#8E95A3]">NASA VIIRS Uydu:</span>
+            <input
+              type="date"
+              value={nasaGibsDate}
+              max={new Date().toISOString().slice(0, 10)}
+              onChange={(e) => setNasaGibsDate(e.target.value)}
+              className="bg-transparent font-mono-tech text-xs text-white focus:outline-none"
+            />
+          </div>
+        )}
+
+        {layers.radar && rainMeta && rainMeta.frames.length > 0 && (
+          <div className="atlas-glass rounded-full px-3.5 py-1.5 flex items-center gap-2.5 pointer-events-auto w-[310px]">
+            <button onClick={() => setRadarPlaying((p) => !p)} className="atlas-btn atlas-btn-amber w-6 h-6 rounded-full">
+              {radarPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+            </button>
             <input
               type="range"
               min={0}
               max={rainMeta.frames.length - 1}
               value={radarIdx}
               onChange={(e) => setRadarIdx(Number(e.target.value))}
-              className="w-full accent-[#FF4D00] h-1 bg-[#242830] cursor-pointer"
+              className="flex-1 accent-[#E5A952]"
             />
+            <span className="font-mono-tech text-[10px] text-[#60A5FA]">
+              {new Date((rainMeta.frames[radarIdx]?.time || 0) * 1000).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+            </span>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* BOTTOM SWISS COORDINATE RULER & TELEMETRY FOOTER */}
-      <footer className="fixed bottom-0 left-0 right-0 h-[28px] bg-[#0B0C0E]/95 border-t border-[#242830] z-20 flex items-center justify-between px-3 font-mono-tech text-[10px] text-[#7C8492]">
-        <div className="flex items-center gap-3">
-          <span className="text-[#ECEEF2]">
-            LAT {Math.abs(cursor.lat).toFixed(4)}°{cursor.lat >= 0 ? 'N' : 'S'}
-          </span>
-          <span className="text-[#ECEEF2]">
-            LON {Math.abs(cursor.lon).toFixed(4)}°{cursor.lon >= 0 ? 'E' : 'W'}
-          </span>
-          <span className="hidden sm:inline text-[#5E6673]">Z {cursor.zoom.toFixed(2)}</span>
-          <span className="hidden md:inline-block w-24 h-2.5 ruler-x opacity-60" />
-        </div>
+      {/* Live Wikimedia Pulse Widget */}
+      <WikiPulseBar open={wikiPulseOpen} onClose={() => setWikiPulseOpen(false)} />
 
-        <div className="flex items-center gap-3 truncate">
-          {selectedSat ? (
-            <span className="flex items-center gap-2 text-[#FF4D00]">
-              <span>YÖRÜNGE KİLİTLİ: {selectedSat.name}</span>
-              <button
-                onClick={() => setSelectedSat(null)}
-                className="underline text-[#ECEEF2] cursor-pointer"
-              >
-                TEMİZLE
-              </button>
-            </span>
-          ) : earthquakes[0] ? (
-            <span className="truncate">
-              SON SİSMİK:{' '}
-              <strong className="text-[#FF4D00]">M{earthquakes[0].mag.toFixed(1)}</strong>{' '}
-              {earthquakes[0].title} ({earthquakes[0].source})
-            </span>
-          ) : (
-            <span>KÜREDE HERHANGİ BİR NOKTAYA TIKLAYARAK TELEMETRİ ÇEKİN • CTRL+K</span>
-          )}
-        </div>
-      </footer>
+      {/* Persistent Bottom-Left Mini Radio Player */}
+      <MiniRadioBar
+        station={playingRadio}
+        paused={radioPaused}
+        audioEl={audioRef.current}
+        onTogglePause={() => playingRadio && handlePlayRadio(playingRadio)}
+        onStop={() => {
+          audioRef.current?.pause();
+          setPlayingRadio(null);
+          setRadioPaused(false);
+        }}
+      />
 
-      {/* RIGHT REGION DRAWER */}
+      {/* Minimalist Bottom-Center 6-Group Floating Dock (Replaces ugly 15-box left wall!) */}
+      <FloatingDock
+        layers={layers}
+        onToggleLayer={toggleLayer}
+        counts={{
+          eq: earthquakes.length,
+          disasters: disasters.length,
+          flights: flights.length,
+          mil: militaryFlights.length,
+          sats: satellites.length,
+          rockets: rockets.length,
+          fireballs: fireballs.length,
+          kiwisdr: kiwisdr.length,
+          tor: torRelays.length,
+          ships: ships.length,
+          fires: fires.length,
+          cams: cameras.length,
+          discoveries: discoveries.length,
+        }}
+        measureMode={measureMode}
+        onToggleMeasure={() => { setMeasureMode((v) => !v); setMeasurePts([]); }}
+        autopilot={autopilot}
+        onToggleAutopilot={() => setAutopilot((v) => !v)}
+        wikiPulseOpen={wikiPulseOpen}
+        onToggleWikiPulse={() => setWikiPulseOpen((v) => !v)}
+        onOpenWall={() => setWallOpen(true)}
+        onOpenRadio={() => openDrawerTo('media', 'radio')}
+        onOpenTv={() => openDrawerTo('media', 'tv')}
+        onOpenDiscovery={() => setDiscoveryOpen(true)}
+        onOpenAlerts={() => setAlertsOpen(true)}
+        onOpenPalette={() => setPaletteOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
+
+      {/* Right Smart 4-Tab Region Drawer */}
       <RegionDrawer
         place={selectedPlace}
-        onClose={() => {
-          setSelectedPlace(null);
-          setActiveCamera(null);
-        }}
+        onClose={() => { setSelectedPlace(null); setActiveCamera(null); }}
         cameras={cameras}
-        onAddCamera={(cam) => saveCameras([cam, ...customCameras])}
+        onAddCamera={(cam) => {
+          const next = [cam, ...customCameras];
+          setCustomCameras(next);
+          localStorage.setItem('maotun_custom_cameras_v2', JSON.stringify(next));
+        }}
         earthquakes={earthquakes}
-        flights={flights}
+        onSelectEq={(eq) => {
+          setSelectedEq(eq);
+          setFlyTarget({ lat: eq.lat, lon: eq.lon, zoom: 7.5, ts: Date.now() });
+        }}
         kiwisdr={kiwisdr}
         activeCamera={activeCamera}
         onSelectCamera={setActiveCamera}
+        playingRadio={playingRadio}
+        radioPaused={radioPaused}
+        onPlayRadio={handlePlayRadio}
+        onShowOsmPois={setOsmPois}
+        onOpenDiscovery={() => setDiscoveryOpen(true)}
         config={config}
         requestedTab={requestedTab}
       />
 
-      {/* MODALS */}
+      {/* Modals */}
+      <DiscoveryModal
+        open={discoveryOpen}
+        onClose={() => setDiscoveryOpen(false)}
+        place={selectedPlace}
+        pins={discoveries}
+        onAddPin={(pin) => saveDiscoveries([pin, ...discoveries])}
+        onDeletePin={(id) => saveDiscoveries(discoveries.filter((p) => p.id !== id))}
+        onFlyTo={(lat, lon, zoom) => setFlyTarget({ lat, lon, zoom, ts: Date.now() })}
+      />
       <MultiCamWall open={wallOpen} onClose={() => setWallOpen(false)} cameras={cameras} />
-      <AlertModal open={alertsOpen} onClose={() => setAlertsOpen(false)} rules={rules} onSaveRules={saveRules} />
+      <AlertModal
+        open={alertsOpen}
+        onClose={() => setAlertsOpen(false)}
+        rules={rules}
+        onSaveRules={(next) => {
+          setRules(next);
+          localStorage.setItem('maotun_rules', JSON.stringify(next));
+        }}
+      />
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} actions={paletteActions} />
       <SettingsModal
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         config={config}
-        onSaveConfig={saveConfig}
+        onSaveConfig={(next) => {
+          setConfig(next);
+          localStorage.setItem('maotun_config_v2', JSON.stringify(next));
+        }}
         cameras={cameras}
-        onImportCameras={(imported) => saveCameras(imported)}
+        onImportCameras={(imported) => {
+          setCustomCameras(imported);
+          localStorage.setItem('maotun_custom_cameras_v2', JSON.stringify(imported));
+        }}
       />
     </div>
   );

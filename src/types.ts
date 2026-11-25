@@ -72,15 +72,44 @@ export interface RainViewerMeta {
   frames: RainViewerFrame[];
 }
 
-export interface WeatherAqi {
+export interface DailyWeather {
+  date: string;
+  temp_max: number;
+  temp_min: number;
+  rain_prob: number;
+  weather_code: number;
+  uv_max: number;
+  sunrise: string;
+  sunset: string;
+}
+
+export interface HourlyWeather {
+  time: string;
   temp_c: number;
+  rain_prob: number;
+  cloud_cover: number;
+}
+
+export interface RichForecast {
+  temp_c: number;
+  apparent_c: number;
   wind_kmh: number;
   wind_dir: number;
   humidity: number;
+  cloud_cover: number;
+  weather_code: number;
   pm25: number;
   pm10: number;
-  co: number;
+  dust: number;
+  pollen_grass: number;
+  pollen_olive: number;
   us_aqi: number;
+  sea_temp_c: number | null;
+  wave_height_m: number | null;
+  river_discharge: number | null;
+  river_mean: number | null;
+  daily: DailyWeather[];
+  hourly: HourlyWeather[];
 }
 
 export interface AuroraPoint {
@@ -112,6 +141,91 @@ export interface FireHotspot {
   brightness: number;
   frp: number;
   acq_date: string;
+}
+
+export interface RocketLaunch {
+  id: string;
+  name: string;
+  provider: string;
+  pad_name: string;
+  lat: number;
+  lon: number;
+  net: string;
+  status: string;
+}
+
+export interface FireballItem {
+  date: string;
+  lat: number;
+  lon: number;
+  alt_km: number;
+  energy_kt: number;
+  vel_kms: number;
+}
+
+export interface TorRelay {
+  nickname: string;
+  country: string;
+  lat: number;
+  lon: number;
+  bandwidth_mbps: number;
+}
+
+export interface WikiPlace {
+  pageid: number;
+  title: string;
+  lat: number;
+  lon: number;
+  dist_m: number;
+  url: string;
+}
+
+export interface WildlifeObs {
+  id: number;
+  species: string;
+  common_name: string;
+  observed_on: string;
+  photo_url: string;
+  lat: number;
+  lon: number;
+}
+
+export interface OsmPoi {
+  id: number;
+  name: string;
+  kind: string;
+  lat: number;
+  lon: number;
+  extra: string;
+}
+
+export interface OoniAlert {
+  domain: string;
+  test_name: string;
+  anomaly: boolean;
+  confirmed: boolean;
+  time_str: string;
+}
+
+export interface CountryContext {
+  usd_try: number;
+  eur_try: number;
+  gbp_try: number;
+  local_currency: string;
+  local_to_try: number | null;
+  next_holiday: string;
+  ooni_alerts: OoniAlert[];
+}
+
+export interface IstanbulDam {
+  name: string;
+  percent: number;
+}
+
+export interface IstanbulData {
+  total_dam_percent: number;
+  dams: IstanbulDam[];
+  note: string;
 }
 
 export interface RadioStation {
@@ -174,6 +288,32 @@ export interface AlertRule {
   enabled: boolean;
 }
 
+export interface DiscoveryPin {
+  id: string;
+  title: string;
+  city: string;
+  country_code: string;
+  lat: number;
+  lon: number;
+  photoDataUrl: string;
+  note: string;
+  xp: number;
+  gpsVerified: boolean;
+  createdAt: string;
+}
+
+export interface DiscoveryQuest {
+  id: string;
+  title: string;
+  city: string;
+  country_code: string;
+  lat: number;
+  lon: number;
+  rarity: 'Sıradan' | 'Nadir' | 'Gizli Hazine';
+  baseXp: number;
+  hint: string;
+}
+
 export interface LayerState {
   earthquakes: boolean;
   faults: boolean;
@@ -181,15 +321,21 @@ export interface LayerState {
   flights: boolean;
   military: boolean;
   satellites: boolean;
+  rockets: boolean;
+  fireballs: boolean;
   kiwisdr: boolean;
   radar: boolean;
   aurora: boolean;
   cables: boolean;
+  tor: boolean;
+  railways: boolean;
   ships: boolean;
   fires: boolean;
   cameras: boolean;
   terminator: boolean;
   terrain: boolean;
+  nasaGibs: boolean;
+  discoveries: boolean;
 }
 
 export interface ApiKeysConfig {
