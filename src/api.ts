@@ -5,6 +5,7 @@ import type {
   FireHotspot,
   FlightItem,
   KiwiSdrNode,
+  LiveCamera,
   NewsItem,
   OutageItem,
   PlaceInfo,
@@ -39,6 +40,7 @@ export const api = {
   getNews: (query: string) => invoke<NewsItem[]>('get_news', { query }),
   getOutages: (countryCode: string) =>
     invoke<OutageItem[]>('get_outages', { countryCode }),
+  getLiveCameras: () => invoke<LiveCamera[]>('get_live_cameras'),
   reverseGeocode: (lat: number, lon: number) =>
     invoke<PlaceInfo>('reverse_geocode', { lat, lon }),
   searchPlace: (query: string) => invoke<PlaceInfo[]>('search_place', { query }),

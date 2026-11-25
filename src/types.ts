@@ -161,7 +161,7 @@ export interface LiveCamera {
   country_code: string;
   lat: number;
   lon: number;
-  kind: 'youtube' | 'hls' | 'snapshot';
+  kind: 'youtube' | 'hls' | 'mp4' | 'snapshot';
   embed_url: string;
   refresh_sec?: number;
 }

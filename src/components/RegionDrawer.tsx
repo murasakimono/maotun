@@ -44,6 +44,7 @@ interface RegionDrawerProps {
   activeCamera: LiveCamera | null;
   onSelectCamera: (cam: LiveCamera | null) => void;
   config: ApiKeysConfig;
+  requestedTab?: { tab: 'cams' | 'radio' | 'sdr' | 'tv' | 'signals' | 'news' | 'brief'; ts: number } | null;
 }
 
 type TabKey = 'cams' | 'radio' | 'sdr' | 'tv' | 'signals' | 'news' | 'brief';
@@ -59,6 +60,7 @@ export function RegionDrawer({
   activeCamera,
   onSelectCamera,
   config,
+  requestedTab,
 }: RegionDrawerProps) {
   const [tab, setTab] = useState<TabKey>('cams');
   const [radios, setRadios] = useState<RadioStation[]>([]);
@@ -107,6 +109,10 @@ export function RegionDrawer({
   useEffect(() => {
     if (activeCamera) setTab('cams');
   }, [activeCamera]);
+
+  useEffect(() => {
+    if (requestedTab) setTab(requestedTab.tab);
+  }, [requestedTab]);
 
   const nearbySdr = useMemo(() => {
     if (!place) return [];

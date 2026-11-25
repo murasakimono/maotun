@@ -1,6 +1,6 @@
 [package]
 name = "maotun"
-version = "2.0.0"
+version = "2.0.1"
 description = "MAOTUN — Küresel Sinyal Konsolu ve Canlı Dünya İstihbarat Küresi"
 authors = ["Metehan"]
 edition = "2021"

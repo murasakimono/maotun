@@ -79,6 +79,11 @@ async fn get_outages(country_code: String) -> Vec<OutageItem> {
 }
 
 #[tauri::command]
+async fn get_live_cameras() -> Vec<LiveCameraItem> {
+    feeds::fetch_live_cameras().await
+}
+
+#[tauri::command]
 async fn reverse_geocode(lat: f64, lon: f64) -> PlaceInfo {
     feeds::reverse_geocode(lat, lon).await
 }
@@ -117,6 +122,7 @@ pub fn run() {
             get_tv_channels,
             get_news,
             get_outages,
+            get_live_cameras,
             reverse_geocode,
             search_place,
             ai_region_brief

@@ -749,6 +749,113 @@ pub async fn ai_region_brief(region: String, summary_context: String, endpoint: 
     Ok(json["message"]["content"].as_str().unwrap_or("Brifing oluşturulamadı.").to_string())
 }
 
+pub async fn fetch_live_cameras() -> Vec<LiveCameraItem> {
+    let client = http_client();
+    let mut cams: Vec<LiveCameraItem> = Vec::new();
+
+    // 1. Fetch verified global public HLS/MP4/JPEG cameras from Live-Environment-Streams
+    if let Ok(resp) = client
+        .get("https://raw.githubusercontent.com/william-ricchiuti/Live-Environment-Streams/main/streams.geojson")
+        .send()
+        .await
+    {
+        if let Ok(json) = resp.json::<serde_json::Value>().await {
+            if let Some(feats) = json["features"].as_array() {
+                let mut per_country: std::collections::HashMap<String, usize> =
+                    std::collections::HashMap::new();
+                for (i, f) in feats.iter().enumerate() {
+                    let p = &f["properties"];
+                    if p["status"].as_str().unwrap_or("") != "active" {
+                        continue;
+                    }
+                    let utype = p["url_type"].as_str().unwrap_or("");
+                    let kind = match utype {
+                        "hls" => "hls",
+                        "mp4" => "mp4",
+                        "jpeg" | "jpg" | "image" => "snapshot",
+                        _ => continue,
+                    };
+                    let url = p["url"].as_str().unwrap_or("");
+                    if !url.starts_with("https://") {
+                        continue;
+                    }
+                    let cc = p["country_code"].as_str().unwrap_or("INT").to_uppercase();
+                    let count = per_country.entry(cc.clone()).or_insert(0);
+                    if *count >= 16 {
+                        continue;
+                    }
+                    if let Some(c) = f["geometry"]["coordinates"].as_array() {
+                        let lon = c.first().and_then(|v| v.as_f64()).unwrap_or(0.0);
+                        let lat = c.get(1).and_then(|v| v.as_f64()).unwrap_or(0.0);
+                        if lat == 0.0 && lon == 0.0 {
+                            continue;
+                        }
+                        *count += 1;
+                        cams.push(LiveCameraItem {
+                            id: format!("env-{}", i),
+                            name: p["name"].as_str().unwrap_or("Canlı Kamera").chars().take(52).collect(),
+                            city: p["display_name"].as_str().unwrap_or(&cc).chars().take(34).collect(),
+                            country_code: cc,
+                            lat,
+                            lon,
+                            kind: kind.to_string(),
+                            embed_url: url.to_string(),
+                            refresh_sec: if kind == "snapshot" { Some(8) } else { None },
+                        });
+                        if cams.len() >= 180 {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Dynamically resolve live YouTube 24/7 channels (ISS 4K, EarthCam, Tokyo, Skyline)
+    let yt_channels = [
+        ("yt-iss-sen", "ISS 4K — Uzaydan Canlı Dünya (Sen)", "Yörünge (420 km)", "INT", 24.0, 22.0, "https://www.youtube.com/@Sen/live"),
+        ("yt-earthcam", "EarthCam — Canlı Dünya & New York", "New York", "US", 40.758, -73.9855, "https://www.youtube.com/@earthcam/live"),
+        ("yt-tokyo-ann", "Tokyo — Canlı Şehir & Haber Kamerası", "Tokyo", "JP", 35.6595, 139.7004, "https://www.youtube.com/@ANNnewsCH/live"),
+        ("yt-skyline", "SkylineWebcams — Canlı Şehir Akışı", "Avrupa", "IT", 45.4371, 12.3326, "https://www.youtube.com/@SkylineWebcams/live"),
+    ];
+    for (id, name, city, cc, lat, lon, live_url) in yt_channels {
+        if let Ok(resp) = client.get(live_url).send().await {
+            if let Ok(html) = resp.text().await {
+                if let Some(vid) = extract_youtube_video_id(&html) {
+                    cams.insert(
+                        0,
+                        LiveCameraItem {
+                            id: id.to_string(),
+                            name: name.to_string(),
+                            city: city.to_string(),
+                            country_code: cc.to_string(),
+                            lat,
+                            lon,
+                            kind: "youtube".to_string(),
+                            embed_url: format!("https://www.youtube-nocookie.com/embed/{}?autoplay=1&mute=1", vid),
+                            refresh_sec: None,
+                        },
+                    );
+                }
+            }
+        }
+    }
+
+    cams
+}
+
+fn extract_youtube_video_id(html: &str) -> Option<String> {
+    let needle = "\"videoId\":\"";
+    if let Some(pos) = html.find(needle) {
+        let rest = &html[pos + needle.len()..];
+        let id: String = rest.chars().take(11).collect();
+        if id.len() == 11 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+            return Some(id);
+        }
+    }
+    None
+}
+
 fn url_encode(s: &str) -> String {
     s.bytes()
         .map(|b| match b {

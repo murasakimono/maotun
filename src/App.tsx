@@ -14,12 +14,14 @@ import {
   Pause,
   Plane,
   Play,
+  Radio,
   RefreshCw,
   Search,
   Settings,
   Shield,
   Ship,
   Sparkles,
+  Tv,
   Video,
   Waves,
 } from 'lucide-react';
@@ -82,14 +84,20 @@ export function App() {
   const [fires, setFires] = useState<FireHotspot[]>([]);
 
   // User Persisted States
-  const [cameras, setCameras] = useState<LiveCamera[]>(() => {
+  const [customCameras, setCustomCameras] = useState<LiveCamera[]>(() => {
     try {
-      const saved = localStorage.getItem('maotun_cameras_v2');
-      return saved ? JSON.parse(saved) : DEFAULT_CAMERAS;
+      const saved = localStorage.getItem('maotun_custom_cameras_v2');
+      return saved ? JSON.parse(saved) : [];
     } catch {
-      return DEFAULT_CAMERAS;
+      return [];
     }
   });
+  const [liveCameras, setLiveCameras] = useState<LiveCamera[]>(DEFAULT_CAMERAS);
+  const cameras = useMemo(() => [...customCameras, ...liveCameras], [customCameras, liveCameras]);
+  const [requestedTab, setRequestedTab] = useState<{
+    tab: 'cams' | 'radio' | 'sdr' | 'tv' | 'signals' | 'news' | 'brief';
+    ts: number;
+  } | null>(null);
 
   const [rules, setRules] = useState<AlertRule[]>(() => {
     try {
@@ -172,7 +180,7 @@ export function App() {
   const refreshAll = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [eq, dis, flt, mil, tles, sdr, rv, sw, shp] = await Promise.all([
+      const [eq, dis, flt, mil, tles, sdr, rv, sw, shp, liveCams] = await Promise.all([
         api.getEarthquakes().catch(() => []),
         api.getDisasters().catch(() => []),
         api.getFlights(39.0, 34.0, 250).catch(() => []),
@@ -182,7 +190,9 @@ export function App() {
         api.getRainViewerMeta().catch(() => null),
         api.getSpaceWeather().catch(() => null),
         api.getShips().catch(() => []),
+        api.getLiveCameras().catch(() => []),
       ]);
+      if (liveCams.length > 0) setLiveCameras(liveCams);
       setEarthquakes(eq);
       setDisasters(dis);
       setFlights(flt);
@@ -381,8 +391,23 @@ export function App() {
   };
 
   const saveCameras = (next: LiveCamera[]) => {
-    setCameras(next);
-    localStorage.setItem('maotun_cameras_v2', JSON.stringify(next));
+    setCustomCameras(next);
+    localStorage.setItem('maotun_custom_cameras_v2', JSON.stringify(next));
+  };
+
+  const openDrawerTab = (tab: 'cams' | 'radio' | 'sdr' | 'tv' | 'signals' | 'news' | 'brief') => {
+    sound.playClick();
+    if (!selectedPlace) {
+      setSelectedPlace({
+        display_name: 'İstanbul, Türkiye',
+        city: 'İstanbul',
+        country: 'Türkiye',
+        country_code: 'TR',
+        lat: 41.0082,
+        lon: 28.9784,
+      });
+    }
+    setRequestedTab({ tab, ts: Date.now() });
   };
 
   const saveRules = (next: AlertRule[]) => {
@@ -644,6 +669,22 @@ export function App() {
         {/* Right Controls */}
         <div className="flex items-center gap-1.5 shrink-0">
           <button
+            onClick={() => openDrawerTab('radio')}
+            className="inst-btn px-2.5 py-1.5"
+            title="Canlı Yerel Radyolar + FFT Spektrum"
+          >
+            <Radio className="w-3.5 h-3.5 text-[#00D4FF]" />
+            <span className="hidden md:inline">RADYO</span>
+          </button>
+          <button
+            onClick={() => openDrawerTab('tv')}
+            className="inst-btn px-2.5 py-1.5"
+            title="Canlı TV Kanalları (IPTV HLS)"
+          >
+            <Tv className="w-3.5 h-3.5 text-[#FF4D00]" />
+            <span className="hidden md:inline">TV</span>
+          </button>
+          <button
             onClick={() => {
               sound.playToggle(!autopilot);
               setAutopilot((a) => !a);
@@ -821,13 +862,14 @@ export function App() {
           setActiveCamera(null);
         }}
         cameras={cameras}
-        onAddCamera={(cam) => saveCameras([cam, ...cameras])}
+        onAddCamera={(cam) => saveCameras([cam, ...customCameras])}
         earthquakes={earthquakes}
         flights={flights}
         kiwisdr={kiwisdr}
         activeCamera={activeCamera}
         onSelectCamera={setActiveCamera}
         config={config}
+        requestedTab={requestedTab}
       />
 
       {/* MODALS */}

@@ -160,3 +160,16 @@ pub struct PlaceInfo {
     pub lat: f64,
     pub lon: f64,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LiveCameraItem {
+    pub id: String,
+    pub name: String,
+    pub city: String,
+    pub country_code: String,
+    pub lat: f64,
+    pub lon: f64,
+    pub kind: String, // "hls" | "mp4" | "snapshot" | "youtube"
+    pub embed_url: String,
+    pub refresh_sec: Option<u32>,
+}
